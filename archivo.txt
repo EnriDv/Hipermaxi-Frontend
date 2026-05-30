@@ -1,0 +1,6 @@
+Mensajes automaticos
+Que se pueda mover de lugart (flotante)
+Donde pueda escribir un mensaje y enviarlo 
+
+
+Streaming de tokens

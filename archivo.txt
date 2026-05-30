@@ -1,6 +1,12 @@
-Mensajes automaticos
-Que se pueda mover de lugart (flotante)
-Donde pueda escribir un mensaje y enviarlo 
-
-
 Streaming de tokens
+
+3 NIVELES
+
+1. No autenticado:
+    Solo puedes hacer preguntas acerca del loggin y el flujo de creacion de credenciales.
+
+2. Autenticado:
+    Responde preguntas generales pero no puedes realizar acciones como ver productos ni ordenes.
+
+3. Autenticado y en flujo de acciones:
+    Responde preguntas y además puedes realizar acciones como ver productos y ordenes.

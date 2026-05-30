@@ -12,6 +12,9 @@ interface ChatWindowProps {
   onCreateConversation: () => void;
   onMinimize: () => void;
   dashboardState: MockDashboardState;
+  alignment?: 'left' | 'right';
+  windowSize: { width: number; height: number };
+  onWindowResize: (size: { width: number; height: number }) => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -24,10 +27,78 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   onCreateConversation,
   onMinimize,
   dashboardState,
+  alignment = 'right',
+  windowSize,
+  onWindowResize,
 }) => {
   const [inputText, setInputText] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  
+  // Resize states
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartPos = useRef({ x: 0, y: 0 });
+  const resizeStartSize = useRef({ w: 0, h: 0 });
+  const resizeDirection = useRef<'top' | 'side' | 'corner'>('corner');
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Resize Handlers
+  const handleResizeStart = (e: React.MouseEvent, direction: 'top' | 'side' | 'corner') => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeDirection.current = direction;
+    resizeStartPos.current = { x: e.clientX, y: e.clientY };
+    resizeStartSize.current = { w: windowSize.width, h: windowSize.height };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      
+      let newW = resizeStartSize.current.w;
+      let newH = resizeStartSize.current.h;
+      
+      const dx = e.clientX - resizeStartPos.current.x;
+      const dy = e.clientY - resizeStartPos.current.y;
+
+      if (resizeDirection.current === 'top' || resizeDirection.current === 'corner') {
+        newH = resizeStartSize.current.h - dy; // expanding upwards means negative dy increases height
+      }
+      
+      if (resizeDirection.current === 'side' || resizeDirection.current === 'corner') {
+        if (alignment === 'right') {
+          newW = resizeStartSize.current.w - dx; // expanding leftwards means negative dx increases width
+        } else {
+          newW = resizeStartSize.current.w + dx; // expanding rightwards means positive dx increases width
+        }
+      }
+
+      // Constrain sizes
+      newW = Math.max(300, Math.min(newW, window.innerWidth - 40));
+      newH = Math.max(400, Math.min(newH, window.innerHeight - 40));
+
+      onWindowResize({ width: newW, height: newH });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      // Disable text selection while resizing
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.userSelect = '';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, alignment, onWindowResize]);
 
   // Scroll to bottom when messages change or loading state changes
   useEffect(() => {
@@ -137,7 +208,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   return (
-    <div className="chat-window-card animate-scale-up">
+    <div 
+      className={`chat-window-card animate-scale-up ${alignment === 'left' ? 'left-aligned' : ''} ${isResizing ? 'resizing' : ''}`}
+      style={{ width: `${windowSize.width}px`, height: `${windowSize.height}px` }}
+    >
+      {/* Invisible resize handles */}
+      <div 
+        className="resize-handle top" 
+        onMouseDown={(e) => handleResizeStart(e, 'top')} 
+      />
+      <div 
+        className={`resize-handle side ${alignment === 'left' ? 'right-side' : 'left-side'}`} 
+        onMouseDown={(e) => handleResizeStart(e, 'side')} 
+      />
+      <div 
+        className={`resize-handle corner ${alignment === 'left' ? 'top-right' : 'top-left'}`} 
+        onMouseDown={(e) => handleResizeStart(e, 'corner')} 
+      />
+
       {/* Header */}
       <div className="chat-header">
         <div className="header-left">

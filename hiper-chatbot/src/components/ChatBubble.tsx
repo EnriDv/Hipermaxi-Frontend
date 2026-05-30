@@ -3,75 +3,49 @@ import React, { useState, useEffect, useRef } from 'react';
 interface ChatBubbleProps {
   onOpen: () => void;
   hasErrorsOnScreen: boolean;
+  position: { x: number; y: number };
+  onPositionChange: (pos: { x: number; y: number }, align: 'left' | 'right') => void;
 }
 
-export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScreen }) => {
+export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScreen, position, onPositionChange }) => {
   // Dragging states
-  const [position, setPosition] = useState({ x: window.innerWidth - 90, y: window.innerHeight - 100 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const mouseDownPos = useRef({ x: 0, y: 0 });
   const hasDraggedRef = useRef(false);
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const posRef = useRef(position);
+
+  useEffect(() => {
+    posRef.current = position;
+  }, [position]);
+
+  const [isHovered, setIsHovered] = useState(false);
 
   // Attention-seeking states:
   // - 'normal': White background, orange icon
   // - 'attention': Orange background, pulsing ring, message tooltip
-  const [bubbleState, setBubbleState] = useState<'normal' | 'attention'>('normal');
-  const timerRef = useRef<any>(null);
-
-  // Reset inactivity timer
-  const resetInactivityTimer = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    
-    // If we were in attention state, go back to normal
-    setBubbleState('normal');
-
-    timerRef.current = setTimeout(() => {
-      setBubbleState('attention');
-    }, 10000); // 10 seconds of inactivity triggers attention state
-  };
+  const bubbleState = (isHovered || isDragging || hasErrorsOnScreen) ? 'attention' : 'normal';
 
   useEffect(() => {
-    resetInactivityTimer();
-
     // Re-adjust bubble position if window resizes
     const handleResize = () => {
-      setPosition((prev) => {
-        const maxX = window.innerWidth - 80;
-        const maxY = window.innerHeight - 80;
-        return {
-          x: Math.min(prev.x, maxX),
-          y: Math.min(prev.y, maxY),
-        };
-      });
+      const maxX = window.innerWidth - 80;
+      const maxY = window.innerHeight - 80;
+      const align = position.x < window.innerWidth / 2 ? 'left' : 'right';
+      onPositionChange({
+        x: Math.min(position.x, maxX),
+        y: Math.min(position.y, maxY),
+      }, align);
     };
 
     window.addEventListener('resize', handleResize);
-    window.addEventListener('mousemove', resetInactivityTimer);
-    window.addEventListener('keypress', resetInactivityTimer);
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('mousemove', resetInactivityTimer);
-      window.removeEventListener('keypress', resetInactivityTimer);
-    };
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Force attention state if a server error or exception appears on the screen
-  useEffect(() => {
-    if (hasErrorsOnScreen) {
-      setBubbleState('attention');
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
-    } else {
-      resetInactivityTimer();
-    }
-  }, [hasErrorsOnScreen]);
+  // This is now purely handled by the bubbleState derived variable
+
 
   // Drag Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -110,11 +84,25 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
       newX = Math.max(minX, Math.min(newX, maxX));
       newY = Math.max(minY, Math.min(newY, maxY));
 
-      setPosition({ x: newX, y: newY });
+      onPositionChange({ x: newX, y: newY }, newX < window.innerWidth / 2 ? 'left' : 'right');
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
       setIsDragging(false);
+      
+      // Snap logic
+      if (isDragging) {
+        let finalX = posRef.current.x;
+        let align: 'left' | 'right' = 'right';
+        if (posRef.current.x < window.innerWidth / 2) {
+          finalX = 20;
+          align = 'left';
+        } else {
+          finalX = window.innerWidth - 65 - 20; // bubble width is approx 60-65
+          align = 'right';
+        }
+        onPositionChange({ x: finalX, y: posRef.current.y }, align);
+      }
     };
 
     if (isDragging) {
@@ -162,11 +150,25 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
     newX = Math.max(minX, Math.min(newX, maxX));
     newY = Math.max(minY, Math.min(newY, maxY));
 
-    setPosition({ x: newX, y: newY });
+    onPositionChange({ x: newX, y: newY }, newX < window.innerWidth / 2 ? 'left' : 'right');
   };
 
   const handleTouchEnd = () => {
     setIsDragging(false);
+    
+    // Snap logic
+    if (isDragging) {
+      let finalX = posRef.current.x;
+      let align: 'left' | 'right' = 'right';
+      if (posRef.current.x < window.innerWidth / 2) {
+        finalX = 20;
+        align = 'left';
+      } else {
+        finalX = window.innerWidth - 65 - 20;
+        align = 'right';
+      }
+      onPositionChange({ x: finalX, y: posRef.current.y }, align);
+    }
   };
 
   const handleBubbleClick = () => {
@@ -185,7 +187,10 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
+        transition: isDragging ? 'none' : 'left 0.3s cubic-bezier(0.16, 1, 0.3, 1), top 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -215,7 +220,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
 
       {/* Floating tooltip message */}
       {bubbleState === 'attention' && (
-        <div className="bubble-tooltip animate-fade-in">
+        <div className={`bubble-tooltip animate-fade-in ${position.x < window.innerWidth / 2 ? 'left-aligned' : ''}`}>
           {hasErrorsOnScreen ? (
             <span>🚨 ¡Veo un error en pantalla! Pregúntame cómo solucionarlo.</span>
           ) : (

@@ -67,7 +67,30 @@ Estás en la pantalla de **Autenticación (Login)** del portal de proveedores. E
 *Escribe detalladamente tu consulta o selecciona uno de los botones rápidos de ayuda debajo.*`;
   }
 
-  // SCENARIO 2: ACTIVE TAB IS CATALOGO (PRODUCTS PAGE)
+  // SCENARIO 2: USER IS AUTHENTICATED (LEVEL 2 ENFORCEMENT)
+  if (screenContext?.isAuthenticated === true) {
+    // If user tries to perform an action (view products, view orders, etc.), restrict it according to Level 2.
+    if (
+      queryLower.includes('ver producto') || 
+      queryLower.includes('mis producto') || 
+      queryLower.includes('ver orden') || 
+      queryLower.includes('mis orden') || 
+      queryLower.includes('mostrar orden') || 
+      queryLower.includes('mostrar producto') || 
+      queryLower.includes('realizar') || 
+      queryLower.includes('ejecutar')
+    ) {
+      return `### 🔒 Permisos Insuficientes (Nivel 2)
+
+Como asistente inteligente, actualmente me encuentro operando en el **Nivel 2** de integración. 
+
+Esto significa que estoy habilitado para responder preguntas generales y guiarte paso a paso por todos los flujos del portal, pero **no tengo permisos para realizar acciones directas ni consultar tu información privada** (como listar tus productos o ver tus órdenes de compra).
+
+Para realizar esas acciones, por favor navega manualmente utilizando el menú lateral del portal.`;
+    }
+  }
+
+  // SCENARIO 3: ACTIVE TAB IS CATALOGO (PRODUCTS PAGE)
   if (screenContext?.activeTab === 'catalogo') {
 
     // Modal is open (New Product Modal)

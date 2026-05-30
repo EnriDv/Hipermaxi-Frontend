@@ -27,6 +27,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [bubblePosition, setBubblePosition] = useState({ 
+    x: window.innerWidth - 90, 
+    y: window.innerHeight - 100 
+  });
+  const [bubbleAlignment, setBubbleAlignment] = useState<'left' | 'right'>('right');
+  const [chatWindowSize, setChatWindowSize] = useState({ width: 400, height: 600 });
 
   // Initialize and load conversations
   useEffect(() => {
@@ -247,11 +253,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onCreateConversation={handleCreateConversation}
           onMinimize={handleToggleOpen}
           dashboardState={dashboardState}
+          alignment={bubbleAlignment}
+          windowSize={chatWindowSize}
+          onWindowResize={setChatWindowSize}
         />
       ) : (
         <ChatBubble 
           onOpen={handleToggleOpen} 
           hasErrorsOnScreen={hasErrors}
+          position={bubblePosition}
+          onPositionChange={(pos, align) => {
+            setBubblePosition(pos);
+            setBubbleAlignment(align);
+          }}
         />
       )}
     </div>

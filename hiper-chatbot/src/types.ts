@@ -43,6 +43,47 @@ export interface DifyChatResponse {
   created_at: number;
 }
 
+export interface CreateSessionRequest {
+  anon_id?: string | null;
+  layer: 'external' | 'internal';
+  process_type: string;
+}
+
+export interface CreateSessionResponse {
+  session_id: string;
+}
+
+export interface ChatStreamRequest {
+  session_id: string;
+  message: string;
+  image_url?: string | null;
+}
+
+export interface CreateTicketRequest {
+  session_id: string;
+  issue_summary: string;
+  process_type: string;
+}
+
+export interface CreateTicketResponse {
+  ticket_id: string;
+}
+
+// Additional OpenAPI Contract Types
+export interface LoginRequest {
+  email?: string;
+  password?: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  provider: Record<string, any>;
+}
+
+export interface ClaimSessionRequest {
+  anon_id: string;
+}
+
 export interface PriceCatalogItem {
   id: string;
   cost: string;

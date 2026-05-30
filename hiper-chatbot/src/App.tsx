@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DashboardContext } from './context/DashboardContext';
 import { ChatInterface } from './components/ChatInterface';
@@ -15,78 +15,9 @@ const INITIAL_DASHBOARD_STATE: MockDashboardState = {
   username: '',
   activeTab: 'catalogo',
   
-  // Product List
-  productsList: [
-    {
-      id: 'prod_1',
-      sku: 'SKU-GAL-1024',
-      name: 'Galletas de Chocolate Rellenas Hipermaxi 150g',
-      sanitaryRegister: 'AGEMED-2026-10243',
-      imageAttached: true,
-      prices: [
-        {
-          id: 'p1',
-          cost: '19.80',
-          quantity: '16',
-          currency: 'Bs',
-          catalog: 'General',
-          status: 'Activo',
-        }
-      ]
-    }
-  ],
-
-  // Orders List
-  ordersList: [
-    {
-      id: 'OC-2026-0981',
-      date: '30/05/2026',
-      businessUnit: 'Sucursal Equipetrol (SCZ)',
-      providerCode: 'PROV-00812',
-      totalOC: '316.80',
-      totalAVD: '0.00',
-      currencyOC: 'Bs',
-      despatchAlert: 'Sin Aviso de Despacho',
-      invoiceStatus: 'Sin Factura',
-      items: [
-        {
-          itemNum: 1,
-          barcodeProv: '7441002340012',
-          barcodeHiper: '0001-98762',
-          productName: 'Galletas de Chocolate Rellenas Hipermaxi 150g',
-          currency: 'Bs',
-          qtyOC: 16,
-          unitPrice: 19.80,
-          subtotal: 316.80,
-          qtyDespatch: 0,
-        }
-      ]
-    },
-    {
-      id: 'OC-2026-1122',
-      date: '28/05/2026',
-      businessUnit: 'Sucursal Plan 3000 (SCZ)',
-      providerCode: 'PROV-00812',
-      totalOC: '750.00',
-      totalAVD: '750.00',
-      currencyOC: 'Bs',
-      despatchAlert: 'Confirmado',
-      invoiceStatus: 'Sin Factura',
-      items: [
-        {
-          itemNum: 1,
-          barcodeProv: '7441002340050',
-          barcodeHiper: '0002-34567',
-          productName: 'Leche Condensada Hipermaxi 395g',
-          currency: 'Bs',
-          qtyOC: 50,
-          unitPrice: 15.00,
-          subtotal: 750.00,
-          qtyDespatch: 50,
-        }
-      ]
-    }
-  ],
+  // Empty initially, will be populated by fetch
+  productsList: [],
+  ordersList: [],
 
   selectedOrderForInvoice: null,
   selectedOrderForAVD: null,
@@ -99,6 +30,25 @@ const INITIAL_DASHBOARD_STATE: MockDashboardState = {
 function App() {
   const [dashboardState, setDashboardState] = useState<MockDashboardState>(INITIAL_DASHBOARD_STATE);
   const [helpTrigger, setHelpTrigger] = useState<{ query: string; timestamp: number } | null>(null);
+  const [isAppLoading, setIsAppLoading] = useState(true);
+
+  // Fetch initial fake data
+  useEffect(() => {
+    fetch('/fakeData.json')
+      .then(res => res.json())
+      .then(data => {
+        setDashboardState(prev => ({
+          ...prev,
+          productsList: data.productsList || [],
+          ordersList: data.ordersList || [],
+        }));
+        setIsAppLoading(false);
+      })
+      .catch(err => {
+        console.error('Error loading fakeData.json', err);
+        setIsAppLoading(false);
+      });
+  }, []);
 
   const handleDashboardError = (error: any) => {
     setDashboardState(prev => ({
@@ -113,6 +63,10 @@ function App() {
       timestamp: Date.now()
     });
   };
+
+  if (isAppLoading) {
+    return <div className="app-workspace"><div className="sim-panel">Cargando datos del portal...</div></div>;
+  }
 
   return (
     <DashboardContext.Provider value={{ state: dashboardState, onChange: setDashboardState, onHelpTrigger: handleHelpTrigger }}>

@@ -15,6 +15,7 @@ interface ChatWindowProps {
   alignment?: 'left' | 'right';
   windowSize: { width: number; height: number };
   onWindowResize: (size: { width: number; height: number }) => void;
+  onCreateTicket?: () => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -30,6 +31,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   alignment = 'right',
   windowSize,
   onWindowResize,
+  onCreateTicket,
 }) => {
   const [inputText, setInputText] = useState('');
   const [showHistory, setShowHistory] = useState(false);
@@ -164,45 +166,57 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // DYNAMIC SUGGESTED CHIPS GENERATION
   const getSuggestedChips = () => {
-    const chips: Array<{ label: string; query: string; isSupport?: boolean }> = [];
+    const chips: Array<{ label: string; query: string; isSupport?: boolean; isTicket?: boolean }> = [];
     const state = dashboardState;
 
     if (!state.isAuthenticated) {
-      chips.push({ label: '🔑 Crear accesos (Flujo 1)', query: '¿Cómo solicito credenciales por primera vez?' });
-      chips.push({ label: '🔄 Reenvío de clave (Flujo 3)', query: 'Olvidé mi contraseña o necesito reenvío' });
-      chips.push({ label: '⚙️ Activar código (Flujo 2)', query: '¿Cómo activo mi código de proveedor?' });
+      chips.push({ label: '🔑 ¿Cómo crear mi usuario?', query: '¿Cómo solicito credenciales por primera vez?' });
+      chips.push({ label: '🔄 Olvidé mi contraseña', query: 'Olvidé mi contraseña o necesito reenvío' });
+      chips.push({ label: '⚙️ Activar mi código', query: '¿Cómo activo mi código de proveedor?' });
     } else if (state.activeTab === 'catalogo') {
       if (state.newProductForm && state.newProductForm.sanitaryRegister !== undefined) {
-        chips.push({ label: '🖼️ Formatos de imagen (Flujo 4)', query: '¿Qué formatos de imagen se aceptan?' });
-        chips.push({ label: '📋 Registro Sanitario AGEMED', query: '¿Cómo ingreso el Registro Sanitario AGEMED?' });
-        chips.push({ label: '💰 Catálogo de precios', query: '¿Cómo agrego un precio al catálogo?' });
+        chips.push({ label: '🖼️ Requisitos de las fotos', query: '¿Qué formatos de imagen se aceptan?' });
+        chips.push({ label: '📋 Duda con el AGEMED', query: '¿Cómo ingreso el Registro Sanitario AGEMED?' });
+        chips.push({ label: '💰 Llenar el catálogo de precios', query: '¿Cómo agrego un precio al catálogo?' });
       } else {
-        chips.push({ label: '📥 Importación Excel masiva', query: '¿Cómo hago la carga masiva con Excel?' });
-        chips.push({ label: '✚ Registrar producto nuevo', query: '¿Cómo cargo un producto al portal?' });
+        chips.push({ label: '📥 Subir Excel masivo', query: '¿Cómo hago la carga masiva con Excel?' });
+        chips.push({ label: '✚ Registrar un nuevo producto', query: '¿Cómo cargo un producto al portal?' });
       }
     } else if (state.activeTab === 'compras') {
       if (state.selectedOrderForInvoice) {
-        chips.push({ label: '🚫 Botón oculto (Escenario A)', query: 'No me aparece la opción de cargar factura' });
-        chips.push({ label: '📄 Formato PDF (Escenario B)', query: 'El sistema rechaza mi archivo de factura' });
-        chips.push({ label: '⚠️ Factura Observada (Escenario C)', query: 'Mi factura aparece como Factura Observada' });
+        chips.push({ label: '🚫 No veo el botón para subir factura', query: 'No me aparece la opción de cargar factura' });
+        chips.push({ label: '📄 Mi factura fue rechazada', query: 'El sistema rechaza mi archivo de factura' });
+        chips.push({ label: '⚠️ Tengo una factura observada', query: 'Mi factura aparece como Factura Observada' });
       } else if (state.selectedOrderForAVD) {
-        chips.push({ label: '✏️ Editar cantidades AVD', query: '¿Cómo edito las cantidades de mi Aviso de Despacho?' });
-        chips.push({ label: '🔒 AVD Confirmado bloqueado', query: 'Mi Aviso de Despacho está Confirmado y bloqueado (Flujo 6)' });
-        chips.push({ label: '📋 Copiar cantidades de OC', query: '¿Cómo funciona Copiar cantidades de la OC?' });
+        chips.push({ label: '✏️ Editar mi Aviso de Despacho', query: '¿Cómo edito las cantidades de mi Aviso de Despacho?' });
+        chips.push({ label: '🔒 No me deja editar el AVD', query: 'Mi Aviso de Despacho está Confirmado y bloqueado' });
+        chips.push({ label: '📋 ¿Para qué sirve Copiar OC?', query: '¿Cómo funciona Copiar cantidades de la OC?' });
       } else {
-        chips.push({ label: '🧾 ¿Cómo cargo facturas? (SOP-05)', query: '¿Cómo subo mi factura PDF a las órdenes?' });
-        chips.push({ label: '🚚 ¿Cómo hago el AVD? (SOP-06)', query: '¿Cómo completo el Aviso de Despacho (AVD)?' });
+        chips.push({ label: '🧾 Ayuda para subir facturas', query: '¿Cómo subo mi factura PDF a las órdenes?' });
+        chips.push({ label: '🚚 Ayuda con el Aviso de Despacho', query: '¿Cómo completo el Aviso de Despacho (AVD)?' });
       }
     }
 
     // Always append WhatsApp support chip
     chips.push({ label: '📞 Servicio Técnico (WhatsApp)', query: 'Hablar con el Servicio Técnico', isSupport: true });
+    
+    // Add ticket chip if active conversation has more than 2 messages (implies they are deep in flow)
+    if (activeConversation && activeConversation.messages.length > 2) {
+      chips.push({ label: '🎫 Generar Ticket GLPI', query: 'Crear ticket', isTicket: true });
+    }
+    
     return chips;
   };
 
-  const handleChipClick = (query: string, isSupport?: boolean) => {
+  const handleChipClick = (query: string, isSupport?: boolean, isTicket?: boolean) => {
     if (isSupport) {
       window.open('https://wa.me/59178401543?text=Hola,%20necesito%20asistencia%20técnica%20en%20el%20portal%20de%20proveedores%20Hipermaxi.', '_blank');
+      onSendMessage(query, false);
+      return;
+    }
+    if (isTicket && onCreateTicket) {
+      onCreateTicket();
+      return;
     }
     onSendMessage(query, false);
   };
@@ -320,10 +334,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     <span className="followup-label">🤖 ¿Necesitas algo más?</span>
                     <div className="followup-chips">
                       {getSuggestedChips().map((chip, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleChipClick(chip.query, chip.isSupport)}
-                          className={`followup-chip ${chip.isSupport ? 'support' : ''}`}
+                        <button 
+                          key={idx} 
+                          className={`suggest-chip ${chip.isSupport ? 'support-chip' : ''} ${chip.isTicket ? 'ticket-chip' : ''}`}
+                          onClick={() => handleChipClick(chip.query, chip.isSupport, chip.isTicket)}
                         >
                           {chip.label}
                         </button>

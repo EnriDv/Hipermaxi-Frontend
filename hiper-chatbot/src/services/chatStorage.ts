@@ -3,6 +3,20 @@ import type { Conversation, Message } from '../types';
 const STORAGE_KEYS = {
   CONVERSATIONS: 'hiper_chatbot_conversations',
   LAST_ACTIVE_ID: 'hiper_chatbot_last_active_id',
+  ANON_ID: 'hiper_chatbot_anon_id',
+};
+
+export const getOrCreateAnonId = (): string => {
+  try {
+    let anonId = localStorage.getItem(STORAGE_KEYS.ANON_ID);
+    if (!anonId) {
+      anonId = crypto.randomUUID ? crypto.randomUUID() : `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem(STORAGE_KEYS.ANON_ID, anonId);
+    }
+    return anonId;
+  } catch {
+    return crypto.randomUUID ? crypto.randomUUID() : `anon_${Date.now()}`;
+  }
 };
 
 export const loadConversations = (): Conversation[] => {
@@ -43,11 +57,10 @@ export const saveLastActiveConversationId = (id: string | null): void => {
   }
 };
 
-export const createNewConversation = (title = 'Conversación nueva'): Conversation => {
+export const createNewConversation = (sessionId: string, title = 'Conversación nueva'): Conversation => {
   const conversations = loadConversations();
-  const newId = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const newConv: Conversation = {
-    id: newId,
+    id: sessionId,
     title,
     messages: [],
     createdAt: Date.now(),
@@ -56,7 +69,7 @@ export const createNewConversation = (title = 'Conversación nueva'): Conversati
   
   conversations.push(newConv);
   saveConversations(conversations);
-  saveLastActiveConversationId(newId);
+  saveLastActiveConversationId(sessionId);
   return newConv;
 };
 

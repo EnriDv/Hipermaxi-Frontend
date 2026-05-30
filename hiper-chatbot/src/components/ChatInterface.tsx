@@ -8,9 +8,10 @@ import {
   saveLastActiveConversationId,
   createNewConversation,
   addMessageToConversation,
-  deleteConversation 
+  deleteConversation,
+  getOrCreateAnonId
 } from '../services/chatStorage';
-import { sendChatMessageToDifyStream } from '../services/difyService';
+import { sendChatMessageToDifyStream, createSession, createTicket } from '../services/difyService';
 
 interface ChatInterfaceProps {
   dashboardState: MockDashboardState;
@@ -90,9 +91,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     
     // Create new conversation if none exists
     if (!currentConv) {
-      currentConv = createNewConversation(text.length > 30 ? text.substring(0, 30) + '...' : text);
-      const updated = loadConversations();
-      setConversations(updated);
+      setIsLoading(true);
+      try {
+        const anonId = getOrCreateAnonId();
+        const sessionRes = await createSession({
+          anon_id: anonId,
+          layer: 'external',
+          process_type: 'provider_support'
+        });
+        currentConv = createNewConversation(sessionRes.session_id, text.length > 30 ? text.substring(0, 30) + '...' : text);
+        const updated = loadConversations();
+        setConversations(updated);
+      } catch (err) {
+        setIsLoading(false);
+        console.error('Failed to create session', err);
+        return;
+      }
     }
 
     // 1. Add user message to conversation
@@ -129,20 +143,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       });
 
       // 3. Format Dify Request
-      const difyRequest = {
-        query: text,
-        inputs: {
-          screenContent: snapshotText || JSON.stringify(dashboardState),
-          url: window.location.href,
-        },
-        user: 'hiper-provider-user-1',
-        conversation_id: currentConv.id,
-        response_mode: 'streaming' as const,
+      const streamRequest = {
+        session_id: currentConv.id,
+        message: text,
       };
 
-      // 4. Send to Dify API simulation as stream
-      const difyResponse = await sendChatMessageToDifyStream(
-        difyRequest,
+      // 4. Send to Dify API as stream
+      const screenContextParam = snapshotText ? JSON.parse(snapshotText) : dashboardState;
+      await sendChatMessageToDifyStream(
+        streamRequest,
+        screenContextParam,
         (chunk, _convId) => {
           accumulatedAnswer += chunk;
 
@@ -165,7 +175,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const finalConv = addMessageToConversation(
         currentConv.id,
         'assistant',
-        difyResponse.answer
+        accumulatedAnswer
       );
       
       if (finalConv) {
@@ -197,6 +207,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleDeleteConversation = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    
+    // Confirmation prompt
+    const confirmDelete = window.confirm('¿Estás seguro de que deseas eliminar este chat? Esta acción no se puede deshacer.');
+    if (!confirmDelete) return;
+
     const remaining = deleteConversation(id);
     setConversations(remaining);
     
@@ -209,10 +224,23 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
-  const handleCreateConversation = () => {
-    const newConv = createNewConversation();
-    setConversations(loadConversations());
-    setActiveConversation(newConv);
+  const handleCreateConversation = async () => {
+    setIsLoading(true);
+    try {
+      const anonId = getOrCreateAnonId();
+      const sessionRes = await createSession({
+        anon_id: anonId,
+        layer: 'external',
+        process_type: 'provider_support'
+      });
+      const newConv = createNewConversation(sessionRes.session_id);
+      setConversations(loadConversations());
+      setActiveConversation(newConv);
+    } catch (err) {
+      console.error('Error creating new session manually', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleToggleOpen = () => {
@@ -238,6 +266,34 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
+  const handleCreateTicket = async () => {
+    if (!activeConversation) return;
+    setIsLoading(true);
+    try {
+      const ticketRes = await createTicket({
+        session_id: activeConversation.id,
+        issue_summary: 'Soporte solicitado desde el Asistente Hipermaxi',
+        process_type: dashboardState.activeTab === 'compras' ? 'SOP-05/06' : 'SOP-04'
+      });
+      const updatedConv = addMessageToConversation(
+        activeConversation.id,
+        'assistant',
+        `✅ **Ticket Creado Exitosamente**\nSe ha generado el ticket de soporte número **${ticketRes.ticket_id}** en GLPI.\n\nUn agente de Soporte TI revisará tu caso y se comunicará contigo a la brevedad.`
+      );
+      if (updatedConv) setActiveConversation(updatedConv);
+    } catch (err) {
+      console.error('Error creating ticket', err);
+      addMessageToConversation(
+        activeConversation.id,
+        'assistant',
+        '⚠️ Hubo un error al intentar generar el ticket. Por favor contacta al soporte por WhatsApp.'
+      );
+    } finally {
+      setIsLoading(false);
+      setConversations(loadConversations());
+    }
+  };
+
   const hasErrors = !!dashboardState.activeError;
 
   return (
@@ -251,6 +307,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onSelectConversation={handleSelectConversation}
           onDeleteConversation={handleDeleteConversation}
           onCreateConversation={handleCreateConversation}
+          onCreateTicket={handleCreateTicket}
           onMinimize={handleToggleOpen}
           dashboardState={dashboardState}
           alignment={bubbleAlignment}

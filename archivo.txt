@@ -10,3 +10,17 @@ Streaming de tokens
 
 3. Autenticado y en flujo de acciones:
     Responde preguntas y además puedes realizar acciones como ver productos y ordenes.
+
+
+mandar id
+devolver sessionid 
+
+historial: traer sesiones
+
+para el chat mandar el session id
+
+tickets cuando toca delegar
+se puede crear un ticket
+
+
+(PARA FUTURO) que pueda obtener datos desde el formulario. que pueda devilver fotos del formulario que le pasaste antes.

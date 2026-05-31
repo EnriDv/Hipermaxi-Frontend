@@ -5,12 +5,14 @@ const DEFAULT_API_BASE_URL = '';
 export class ApiError extends Error {
   status?: number;
   userMessage: string;
+  serverError?: unknown;
 
   constructor(message: string, userMessage: string, status?: number) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.userMessage = userMessage;
+    this.serverError = undefined;
   }
 }
 
@@ -78,10 +80,31 @@ const isNetworkError = (error: unknown): boolean => {
   return errStr.includes('Failed to fetch') || errStr.includes('NetworkError') || errStr.includes('TypeError');
 };
 
-export const createApiErrorFromStatus = (status?: number, statusText?: string): ApiError => {
+export const createApiErrorFromStatus = (status?: number, statusText?: string, serverError?: unknown): ApiError => {
   const message = status ? `Request failed with ${status} ${statusText || ''}`.trim() : 'Request failed';
-  const userMessage = getUserMessageForStatus(status);
-  return new ApiError(message, userMessage, status);
+  let userMessage = getUserMessageForStatus(status);
+
+  // Prefer server-provided messages when available
+  if (serverError) {
+    if (typeof serverError === 'string' && serverError.trim().length > 0) {
+      userMessage = serverError;
+    } else if (serverError && typeof serverError === 'object') {
+      const se = serverError as Record<string, unknown>;
+      if (typeof se.detail === 'string' && se.detail.trim().length > 0) {
+        userMessage = se.detail;
+      } else if (typeof se.message === 'string' && se.message.trim().length > 0) {
+        userMessage = se.message;
+      }
+      // Detect common Postgres RLS failure wording and provide a clearer UX message
+      if (String(JSON.stringify(se)).toLowerCase().includes('row-level security') || String(JSON.stringify(se)).includes('42501') || String(JSON.stringify(se)).toLowerCase().includes('new row violates')) {
+        userMessage = 'Operacion denegada por politicas de seguridad (RLS) en el servidor. Contacta al equipo backend.';
+      }
+    }
+  }
+
+  const err = new ApiError(message, userMessage, status);
+  if (serverError !== undefined) err.serverError = serverError;
+  return err;
 };
 
 export const normalizeApiError = (error: unknown): ApiError => {
@@ -125,16 +148,29 @@ export const apiFetch = (path: string, options: RequestInit = {}): Promise<Respo
 export const apiFetchJson = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
   let response: Response;
   try {
+    console.log('[apiFetchJson]', options.method || 'GET', path);
+    if (typeof options.body === 'string') {
+      console.log('[apiFetchJson] body', options.body);
+    }
     response = await apiFetch(path, options);
   } catch (error) {
     throw normalizeApiError(error);
   }
   if (!response.ok) {
+    // Try to extract a helpful server-side error body (json or text)
+    let serverErrorBody: unknown = undefined;
     try {
-      const errorText = await response.clone().text();
-      console.error(`[API Error] ${options.method || 'GET'} ${path} returned status ${response.status}:`, errorText);
-    } catch (_) {}
-    throw createApiErrorFromStatus(response.status, response.statusText);
+      const txt = await response.clone().text();
+      try {
+        serverErrorBody = JSON.parse(txt);
+      } catch {
+        serverErrorBody = txt;
+      }
+      console.error(`[API Error] ${options.method || 'GET'} ${path} returned status ${response.status}:`, serverErrorBody);
+    } catch {
+      console.error(`[API Error] ${options.method || 'GET'} ${path} returned status ${response.status} (no body)`);
+    }
+    throw createApiErrorFromStatus(response.status, response.statusText, serverErrorBody);
   }
   try {
     return await response.json();

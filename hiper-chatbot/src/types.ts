@@ -61,6 +61,7 @@ export interface CreateConversationRequest {
   session_id: string;
   layer: 'external' | 'internal';
   process_type: string;
+  anon_id?: string | null;
 }
 
 export interface CreateConversationResponse {

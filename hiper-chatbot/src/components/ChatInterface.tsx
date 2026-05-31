@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import type { Conversation, MockDashboardState } from '../types';
+import type { Conversation, Message, MockDashboardState } from '../types';
 import { ChatBubble } from './ChatBubble';
 import { ChatWindow } from './ChatWindow';
 import {
@@ -15,7 +15,7 @@ import {
 } from '../services/chatStorage';
 import { sendChatMessageToDifyStream, createSession, createConversation, getSessionsConversations, getConversationMessages, resolveSession } from '../services/difyService';
 import { getAccessToken, getProviderProfile } from '../services/authStorage';
-import { getUserMessageFromError } from '../services/apiClient';
+import { getUserMessageFromError, ApiError } from '../services/apiClient';
 
 interface ChatInterfaceProps {
   dashboardState: MockDashboardState;
@@ -34,7 +34,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   helpTrigger,
 }) => {
   const sessionProcessType = import.meta.env.VITE_SESSION_PROCESS_TYPE || 'activacion_codigo';
-  const isAuthenticated = Boolean(getAccessToken());
+  const accessToken = getAccessToken();
+  const isAuthenticated = Boolean(accessToken);
+  const conversationProcessTypeCatalogo =
+    import.meta.env.VITE_CONVERSATION_PROCESS_TYPE_CATALOGO || sessionProcessType;
+  const conversationProcessTypeCompras =
+    import.meta.env.VITE_CONVERSATION_PROCESS_TYPE_COMPRAS || sessionProcessType;
+  const activeConversationProcessType =
+    dashboardState.activeTab === 'compras'
+      ? conversationProcessTypeCompras
+      : conversationProcessTypeCatalogo;
   const [isOpen, setIsOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
@@ -48,6 +57,86 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   });
   const [sessionId, setSessionId] = useState<string | null>(null);
 
+  const mapBackendMessage = (m: Record<string, unknown>): Message => {
+    const role = m.role === 'user' ? 'user' : 'assistant';
+    const content =
+      (typeof m.content === 'string' && m.content) ||
+      (typeof m.text === 'string' && m.text) ||
+      (typeof m.query === 'string' && m.query) ||
+      (typeof m.answer === 'string' && m.answer) ||
+      '';
+    const timestamp =
+      (typeof m.timestamp === 'number' && m.timestamp) ||
+      (typeof m.created_at === 'number' && m.created_at) ||
+      (typeof m.created_at === 'string' ? Date.parse(m.created_at) : Date.now());
+    const id = typeof m.id === 'string' && m.id
+      ? m.id
+      : `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    return {
+      id,
+      role: role as Message['role'],
+      content,
+      timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+    };
+  };
+
+  const getStringField = (obj: Record<string, unknown>, key: string): string | null => {
+    const value = obj[key];
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  
+
+  const getProviderIdFromProfileCb = React.useCallback((profile: Record<string, unknown> | null): string | null => {
+    if (!profile) return null;
+    return (
+      getStringField(profile, 'provider_id') ||
+      getStringField(profile, 'providerId') ||
+      getStringField(profile, 'id') ||
+      null
+    );
+  }, []);
+
+  const getProviderIdFromTokenCb = React.useCallback((token: string | null): string | null => {
+    if (!token) return null;
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    try {
+      const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = payload.padEnd(Math.ceil(payload.length / 4) * 4, '=');
+      const decoded = atob(padded);
+      const data = JSON.parse(decoded) as Record<string, unknown>;
+      return (
+        (typeof data.provider_id === 'string' && data.provider_id) ||
+        (typeof data.providerId === 'string' && data.providerId) ||
+        (typeof data.sub === 'string' && data.sub) ||
+        null
+      );
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const resolveProviderId = React.useCallback((profile: Record<string, unknown> | null, token: string | null): string | null => {
+    return getProviderIdFromProfileCb(profile) || getProviderIdFromTokenCb(token);
+  }, [getProviderIdFromProfileCb, getProviderIdFromTokenCb]);
+
+  const getGuestSessionId = React.useCallback(async (anonId: string): Promise<string> => {
+    console.log('[getGuestSessionId] create session', {
+      anon_id: anonId,
+      process_type: sessionProcessType
+    });
+    const created = await createSession({
+      anon_id: anonId,
+      layer: 'external',
+      process_type: sessionProcessType
+    });
+    return created.session_id;
+  }, [sessionProcessType]);
+
   const fetchAndSyncConversations = useCallback(async (sId: string, anonId: string | null) => {
     try {
       const backendConvs = await getSessionsConversations(sId, anonId);
@@ -59,12 +148,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         try {
           const messagesData = await getConversationMessages(convId);
-          const messages = messagesData.map((m: any) => ({
-            id: m.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-            content: m.content || m.text || m.query || m.answer || '',
-            timestamp: m.timestamp || m.created_at || Date.now()
-          }));
+          const messages = (messagesData as Array<Record<string, unknown>>).map(mapBackendMessage);
           
           syncedConversations.push({
             id: convId,
@@ -116,22 +200,25 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
         const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
         const providerProfile = getProviderProfile();
-        const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
+        const providerId = resolveProviderId(providerProfile, accessToken);
+        console.log('[initSession] start', {
+          isAuthenticated: Boolean(accessToken),
+          anon_id: anonId,
+          provider_id: providerId,
+          process_type: accessToken ? activeConversationProcessType : sessionProcessType
+        });
         
-        let sessionRes;
+        let newSessionId: string;
         if (accessToken) {
-          sessionRes = await resolveSession({ provider_id: providerId });
+          const sessionRes = await resolveSession({ provider_id: providerId });
+          newSessionId = sessionRes.session_id;
         } else {
-          sessionRes = await createSession({ 
-            anon_id: anonId!,
-            layer: 'external',
-            process_type: sessionProcessType
-          });
+          newSessionId = await getGuestSessionId(anonId!);
         }
         
         if (!isMounted) return;
         
-        const newSessionId = sessionRes.session_id;
+        console.log('[initSession] sessionId', newSessionId);
         setSessionId(newSessionId);
         
         // Sync conversations from backend if authenticated
@@ -148,7 +235,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, fetchAndSyncConversations]);
+  }, [isAuthenticated, fetchAndSyncConversations, sessionProcessType, activeConversationProcessType, getGuestSessionId, resolveProviderId]);
   const [isLoading, setIsLoading] = useState(false);
   const [isChatSwitching, setIsChatSwitching] = useState(false);
   const [bubblePosition, setBubblePosition] = useState({
@@ -183,6 +270,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     [showToast]
   );
 
+  const isRlsError = (err: unknown): boolean => {
+    if (err instanceof ApiError) {
+      const se = err.serverError;
+      if (err.status === 403) {
+        const s = String(JSON.stringify(se || '')).toLowerCase();
+        return s.includes('row-level') || s.includes('row level') || s.includes('42501') || s.includes('new row violates');
+      }
+    }
+    return false;
+  };
+
   // Claiming logic removed to ensure guest sessions do not bleed or migrate into authenticated users
 
   const handleSendMessage = useCallback(async (
@@ -199,39 +297,43 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (!currentConv) {
       setIsLoading(true);
       try {
-        const accessToken = getAccessToken();
         const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
 
         let sId = sessionId;
-        if (!sId) {
-          const providerProfile = getProviderProfile();
-          const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
-
-          let sessionRes;
-          if (accessToken) {
-            sessionRes = await resolveSession({ provider_id: providerId });
-          } else {
-            sessionRes = await createSession({ 
-              anon_id: anonId!,
-              layer: 'external',
-              process_type: sessionProcessType
-            });
+        if (accessToken) {
+          if (!sId) {
+            const providerProfile = getProviderProfile();
+            const providerId = resolveProviderId(providerProfile, accessToken);
+            console.log('[resolveSession] provider_id', providerId);
+            const sessionRes = await resolveSession({ provider_id: providerId });
+            sId = sessionRes.session_id;
+            setSessionId(sId);
           }
-
-          sId = sessionRes.session_id;
+        } else {
+          sId = await getGuestSessionId(anonId!);
           setSessionId(sId);
         }
 
-        const layer = accessToken ? 'internal' : 'external';
-        const processType = accessToken
-          ? (dashboardState.activeTab === 'compras' ? 'carga_factura' : 'registro_sanitario')
-          : sessionProcessType;
+        const layer: 'internal' | 'external' = accessToken ? 'internal' : 'external';
+        const processType = accessToken ? activeConversationProcessType : sessionProcessType;
 
-        const convRes = await createConversation({
+        const payload = {
           session_id: sId!,
           layer,
-          process_type: processType
-        });
+          process_type: processType,
+          anon_id: accessToken ? undefined : (anonId || undefined)
+        };
+        console.log('[createConversation] payload', payload);
+        let convRes;
+        try {
+          convRes = await createConversation(payload);
+        } catch (err) {
+          if (isRlsError(err)) {
+            console.error('Conversation creation blocked by RLS. Payload:', payload, 'serverError:', (err as ApiError).serverError);
+            showToast('error', 'Acceso denegado por servidor', 'La creacion de conversaciones fue denegada por politicas del servidor (RLS). Revisa logs y contacta al equipo backend.');
+          }
+          throw err;
+        }
 
         currentConv = createNewConversation(
           convRes.conversation_id,
@@ -340,7 +442,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setIsLoading(false);
       setConversations(loadConversations());
     }
-  }, [activeConversation, dashboardState, handleApiError, sessionProcessType]);
+  }, [activeConversation, dashboardState, handleApiError, accessToken, sessionId, activeConversationProcessType, getGuestSessionId, resolveProviderId, sessionProcessType, showToast]);
 
   // Listen to outer help triggers (e.g. login links)
   useEffect(() => {
@@ -357,12 +459,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     
     try {
       const messagesData = await getConversationMessages(id);
-      const messages = messagesData.map((m: any) => ({
-        id: m.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-        content: m.content || m.text || m.query || m.answer || '',
-        timestamp: m.timestamp || m.created_at || Date.now()
-      }));
+      const messages = (messagesData as Array<Record<string, unknown>>).map(mapBackendMessage);
 
       const loaded = loadConversations();
       const index = loaded.findIndex((c) => c.id === id);
@@ -427,39 +524,43 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setIsChatSwitching(true);
     setActiveConversation(null);
     try {
-      const accessToken = getAccessToken();
       const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
 
       let sId = sessionId;
-      if (!sId) {
-        const providerProfile = getProviderProfile();
-        const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
-
-        let sessionRes;
-        if (accessToken) {
-          sessionRes = await resolveSession({ provider_id: providerId });
-        } else {
-          sessionRes = await createSession({ 
-            anon_id: anonId!,
-            layer: 'external',
-            process_type: sessionProcessType
-          });
+      if (accessToken) {
+        if (!sId) {
+          const providerProfile = getProviderProfile();
+          const providerId = resolveProviderId(providerProfile, accessToken);
+          console.log('[resolveSession] provider_id', providerId);
+          const sessionRes = await resolveSession({ provider_id: providerId });
+          sId = sessionRes.session_id;
+          setSessionId(sId);
         }
-
-        sId = sessionRes.session_id;
+      } else {
+        sId = await getGuestSessionId(anonId!);
         setSessionId(sId);
       }
 
-      const layer = accessToken ? 'internal' : 'external';
-      const processType = accessToken
-        ? (dashboardState.activeTab === 'compras' ? 'carga_factura' : 'registro_sanitario')
-        : sessionProcessType;
+      const layer: 'internal' | 'external' = accessToken ? 'internal' : 'external';
+      const processType = accessToken ? activeConversationProcessType : sessionProcessType;
 
-      const convRes = await createConversation({
+      const payload = {
         session_id: sId!,
         layer,
-        process_type: processType
-      });
+        process_type: processType,
+        anon_id: accessToken ? undefined : (anonId || undefined)
+      };
+      console.log('[createConversation] payload', payload);
+      let convRes;
+      try {
+        convRes = await createConversation(payload);
+      } catch (err) {
+        if (isRlsError(err)) {
+          console.error('Conversation creation blocked by RLS. Payload:', payload, 'serverError:', (err as ApiError).serverError);
+          showToast('error', 'Acceso denegado por servidor', 'La creacion de conversaciones fue denegada por politicas del servidor (RLS). Revisa logs y contacta al equipo backend.');
+        }
+        throw err;
+      }
 
       const newConv = createNewConversation(convRes.conversation_id, 'Conversación nueva', {
         anonId,
@@ -488,7 +589,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       if (isAuthenticated && !sId) {
         setIsLoading(true);
         const providerProfile = getProviderProfile();
-        const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
+        const providerId = resolveProviderId(providerProfile, accessToken);
         try {
           const sessionRes = await resolveSession({ provider_id: providerId });
           sId = sessionRes.session_id;

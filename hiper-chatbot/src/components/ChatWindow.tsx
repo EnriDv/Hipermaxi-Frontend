@@ -163,7 +163,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   // DYNAMIC SUGGESTED CHIPS GENERATION
-  const handleChipClick = (query: string, isSupport?: boolean, isTicket?: boolean) => {
+  const handleChipClick = (query: string, isSupport?: boolean, _isTicket?: boolean) => {
     if (isSupport) {
       window.open('https://wa.me/59178401543?text=Hola,%20necesito%20asistencia%20técnica%20en%20el%20portal%20de%20proveedores%20Hipermaxi.', '_blank');
       onSendMessage(query, false);

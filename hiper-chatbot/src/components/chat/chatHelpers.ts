@@ -32,7 +32,7 @@ export const buildSuggestedChips = (options: {
   activeConversation: Conversation | null;
   isInPortal: boolean;
 }): SuggestedChip[] => {
-  const { dashboardState: state, activeConversation, isInPortal } = options;
+  const { dashboardState: state, activeConversation: _, isInPortal } = options;
   const chips: SuggestedChip[] = [];
   const isPortalContext = state.isAuthenticated && isInPortal;
 

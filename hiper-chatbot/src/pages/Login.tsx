@@ -6,7 +6,7 @@ import { clearAccessToken, setAccessToken, setProviderProfile } from '../service
 import { getUserMessageFromError } from '../services/apiClient';
 
 export const Login = () => {
-  const { state, onChange, onHelpTrigger } = useDashboard();
+  const { state, onChange } = useDashboard();
   const navigate = useNavigate();
   const [userVal, setUserVal] = useState('proveedor_hipermaxi');
   const [passVal, setPassVal] = useState('password123');
@@ -38,7 +38,7 @@ export const Login = () => {
       onChange({
         ...state,
         isAuthenticated: true,
-        username: response.provider?.name ?? email,
+        username: (response.provider?.name as string) ?? email,
       });
       navigate('/portal/catalog');
     } catch (error) {
@@ -50,13 +50,7 @@ export const Login = () => {
     }
   };
 
-  const handleAuthHelpClick = (flowNum: number) => {
-    let query = '';
-    if (flowNum === 1) query = '¿Cómo solicito credenciales por primera vez?';
-    if (flowNum === 2) query = '¿Cómo activo mi código de proveedor?';
-    if (flowNum === 3) query = 'Olvidé mi contraseña o necesito reenvío';
-    onHelpTrigger(query);
-  };
+
 
   return (
     <div className="login-screen-wrapper">

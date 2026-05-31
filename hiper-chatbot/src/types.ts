@@ -46,7 +46,9 @@ export interface DifyChatResponse {
 }
 
 export interface CreateSessionRequest {
-  anon_id?: string | null;
+  anon_id: string;
+  layer: 'external' | 'internal';
+  process_type: string;
 }
 
 export interface CreateSessionResponse {

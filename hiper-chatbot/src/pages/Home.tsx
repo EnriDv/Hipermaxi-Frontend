@@ -1,4 +1,3 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboard } from '../context/DashboardContext';
 import './Home.css';
@@ -78,8 +77,8 @@ export const Home = () => {
               x="150" 
               y="144" 
               fontFamily="'Outfit', 'Outfit-Bold', sans-serif" 
-              font-weight="900" 
-              font-size="32" 
+              fontWeight="900" 
+              fontSize="32" 
               fill="#ffffff" 
               textAnchor="middle" 
               letterSpacing="0.5"

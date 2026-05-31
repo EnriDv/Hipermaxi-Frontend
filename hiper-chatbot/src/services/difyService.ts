@@ -6,7 +6,6 @@ import type {
   ChatStreamRequest,
   LoginRequest,
   LoginResponse,
-  ClaimSessionRequest,
   CreateConversationRequest,
   CreateConversationResponse
 } from '../types';
@@ -43,7 +42,7 @@ export const createTicket = async (request: CreateTicketRequest): Promise<Create
 
 export const sendChatMessageToDifyStream = async (
   request: ChatStreamRequest,
-  screenContext: any,
+  _screenContext: any,
   onChunk: (chunk: string, conversationId: string) => void
 ): Promise<void> => {
  
@@ -149,14 +148,6 @@ export const loginAPI = async (request: LoginRequest): Promise<LoginResponse> =>
 
 export const logoutAPI = async (): Promise<any> => {
   return await apiFetchJson('/auth/logout', { method: 'POST' });
-};
-
-export const claimSession = async (sessionId: string, request: ClaimSessionRequest): Promise<any> => {
-  return await apiFetchJson(`/sessions/${sessionId}/claim`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request)
-  });
 };
 
 export const getSessionMessages = async (sessionId: string): Promise<any[]> => {

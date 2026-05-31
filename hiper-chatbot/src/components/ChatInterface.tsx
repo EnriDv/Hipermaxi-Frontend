@@ -11,10 +11,9 @@ import {
   createNewConversation,
   addMessageToConversation,
   deleteConversation,
-  createAnonId,
-  updateConversation
+  createAnonId
 } from '../services/chatStorage';
-import { sendChatMessageToDifyStream, createSession, createTicket, claimSession, createConversation, getSessionsConversations, getConversationMessages, resolveSession } from '../services/difyService';
+import { sendChatMessageToDifyStream, createSession, createConversation, getSessionsConversations, getConversationMessages, resolveSession } from '../services/difyService';
 import { getAccessToken, getProviderProfile } from '../services/authStorage';
 import { getUserMessageFromError } from '../services/apiClient';
 
@@ -81,10 +80,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
       }
       
-      if (syncedConversations.length > 0) {
-        syncedConversations.sort((a, b) => b.updatedAt - a.updatedAt);
-        setConversations(syncedConversations);
-        saveConversations(syncedConversations);
+      syncedConversations.sort((a, b) => b.updatedAt - a.updatedAt);
+      setConversations(syncedConversations);
+      saveConversations(syncedConversations);
+      
+      const lastActiveId = loadLastActiveConversationId();
+      const active = syncedConversations.find((c) => c.id === lastActiveId) || syncedConversations[0];
+      if (active) {
+        setActiveConversation(active);
+        saveLastActiveConversationId(active.id);
       }
       return syncedConversations;
     } catch (error) {
@@ -98,8 +102,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     let isMounted = true;
     
     const initSession = async () => {
+      // Clear local history when changing authentication state to avoid leaking guest chats to logged in user, or vice versa
+      setConversations([]);
+      saveConversations([]);
+      setActiveConversation(null);
+      saveLastActiveConversationId(null);
+      setSessionId(null);
+      
       try {
         const accessToken = getAccessToken();
+        if (accessToken) {
+          localStorage.removeItem('hiper_chatbot_anon_id');
+        }
         const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
         const providerProfile = getProviderProfile();
         const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
@@ -108,7 +122,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         if (accessToken) {
           sessionRes = await resolveSession({ provider_id: providerId });
         } else {
-          sessionRes = await resolveSession({ anon_id: anonId });
+          sessionRes = await createSession({ 
+            anon_id: anonId!,
+            layer: 'external',
+            process_type: sessionProcessType
+          });
         }
         
         if (!isMounted) return;
@@ -119,11 +137,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         // Sync conversations from backend if authenticated
         if (accessToken) {
           await fetchAndSyncConversations(newSessionId, anonId);
-        } else {
-          setConversations([]);
-          saveConversations([]);
-          setActiveConversation(null);
-          saveLastActiveConversationId(null);
         }
       } catch (err) {
         console.error('Failed to initialize session:', err);
@@ -170,25 +183,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     [showToast]
   );
 
-  const claimConversationIfNeeded = useCallback(
-    async (conv: Conversation): Promise<Conversation | null> => {
-      if (!isAuthenticated) return conv;
-      if (!conv.anonId || conv.isClaimed) return conv;
-
-      try {
-        const sId = sessionId;
-        if (sId) {
-          await claimSession(sId, { anon_id: conv.anonId });
-        }
-        const updated = updateConversation(conv.id, { isClaimed: true });
-        return updated || conv;
-      } catch (error) {
-        handleApiError(error, 'Error de Sesion', 'No pudimos validar tu sesion. Crea un nuevo chat o contacta a soporte.');
-        return null;
-      }
-    },
-    [handleApiError, isAuthenticated, sessionId]
-  );
+  // Claiming logic removed to ensure guest sessions do not bleed or migrate into authenticated users
 
   const handleSendMessage = useCallback(async (
     text: string,
@@ -216,7 +211,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           if (accessToken) {
             sessionRes = await resolveSession({ provider_id: providerId });
           } else {
-            sessionRes = await resolveSession({ anon_id: anonId });
+            sessionRes = await createSession({ 
+              anon_id: anonId!,
+              layer: 'external',
+              process_type: sessionProcessType
+            });
           }
 
           sId = sessionRes.session_id;
@@ -229,7 +228,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           : sessionProcessType;
 
         const convRes = await createConversation({
-          session_id: sId,
+          session_id: sId!,
           layer,
           process_type: processType
         });
@@ -248,15 +247,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return;
       }
     }
-
-    const claimedConversation = currentConv
-      ? await claimConversationIfNeeded(currentConv)
-      : null;
-    if (!claimedConversation) {
-      setIsLoading(false);
-      return;
-    }
-    currentConv = claimedConversation;
 
     // 1. Add user message to conversation
     // Capture snapshot of screen to attach if analyzed
@@ -350,7 +340,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setIsLoading(false);
       setConversations(loadConversations());
     }
-  }, [activeConversation, dashboardState, handleApiError, sessionProcessType, claimConversationIfNeeded]);
+  }, [activeConversation, dashboardState, handleApiError, sessionProcessType]);
 
   // Listen to outer help triggers (e.g. login links)
   useEffect(() => {
@@ -391,16 +381,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         anonId: isAuthenticated ? null : localStorage.getItem('hiper_chatbot_anon_id')
       };
 
-      const claimed = await claimConversationIfNeeded(selected);
-      if (!claimed) {
-        setIsChatSwitching(false);
-        setActiveConversation(previousConversation || null);
-        return;
-      }
-
-      setActiveConversation(claimed);
+      setActiveConversation(selected);
       setConversations(loadConversations());
-      saveLastActiveConversationId(claimed.id);
+      saveLastActiveConversationId(selected.id);
     } catch (err) {
       console.error('Failed to select conversation from backend:', err);
       const loaded = loadConversations();
@@ -411,16 +394,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return;
       }
 
-      const claimed = await claimConversationIfNeeded(selected);
-      if (!claimed) {
-        setIsChatSwitching(false);
-        setActiveConversation(previousConversation || null);
-        return;
-      }
-
-      setActiveConversation(claimed);
+      setActiveConversation(selected);
       setConversations(loadConversations());
-      saveLastActiveConversationId(claimed.id);
+      saveLastActiveConversationId(selected.id);
     } finally {
       setIsChatSwitching(false);
     }
@@ -463,7 +439,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         if (accessToken) {
           sessionRes = await resolveSession({ provider_id: providerId });
         } else {
-          sessionRes = await resolveSession({ anon_id: anonId });
+          sessionRes = await createSession({ 
+            anon_id: anonId!,
+            layer: 'external',
+            process_type: sessionProcessType
+          });
         }
 
         sId = sessionRes.session_id;
@@ -476,7 +456,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         : sessionProcessType;
 
       const convRes = await createConversation({
-        session_id: sId,
+        session_id: sId!,
         layer,
         process_type: processType
       });

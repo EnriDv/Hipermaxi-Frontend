@@ -16,6 +16,8 @@ export const Catalog = () => {
     onChange({
       ...state,
       newProductForm: {
+        description: '',
+        internalCode: '',
         sanitaryRegister: '',
         hasProductImage: false,
         priceCatalog: [],

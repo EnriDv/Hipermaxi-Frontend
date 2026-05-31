@@ -130,6 +130,10 @@ export const apiFetchJson = async <T>(path: string, options: RequestInit = {}): 
     throw normalizeApiError(error);
   }
   if (!response.ok) {
+    try {
+      const errorText = await response.clone().text();
+      console.error(`[API Error] ${options.method || 'GET'} ${path} returned status ${response.status}:`, errorText);
+    } catch (_) {}
     throw createApiErrorFromStatus(response.status, response.statusText);
   }
   try {

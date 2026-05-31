@@ -122,7 +122,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, position, onPosi
       onPositionChange({ x: newX, y: newY }, newX < window.innerWidth / 2 ? 'left' : 'right');
     };
 
-    const handleMouseUp = (e: MouseEvent) => {
+    const handleMouseUp = () => {
       setIsDragging(false);
       
       // Snap logic

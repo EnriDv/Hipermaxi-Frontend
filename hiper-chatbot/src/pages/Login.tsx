@@ -19,7 +19,6 @@ export const Login = () => {
     return 'Ups, algo salio mal al iniciar sesion. Intenta nuevamente o contacta a soporte.';
   };
 
-  // If already authenticated, redirect to catalog
   if (state.isAuthenticated) {
     return <Navigate to="/portal/catalog" replace />;
   }

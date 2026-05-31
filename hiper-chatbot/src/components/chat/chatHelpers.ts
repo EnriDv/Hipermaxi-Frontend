@@ -38,7 +38,7 @@ export const buildSuggestedChips = (options: {
 
   const credentialFaqs: SuggestedChip[] = [
     { label: 'Necesito mis credenciales', query: '¿Cómo solicito mis credenciales por primera vez?' },
-    { label: 'Olvide de credenciales', query: 'No recibí mis credenciales, necesito que las reenvíen' },
+    { label: 'Olvidé de credenciales', query: 'No recibí mis credenciales, necesito que las reenvíen' },
     { label: 'Activar mi código proveedor', query: '¿Cómo activo mi código de proveedor para el catálogo?' },
   ];
 

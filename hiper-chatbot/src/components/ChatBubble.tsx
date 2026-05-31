@@ -99,7 +99,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, position, onPosi
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
-      
+
       const dx = e.clientX - mouseDownPos.current.x;
       const dy = e.clientY - mouseDownPos.current.y;
       if (Math.sqrt(dx * dx + dy * dy) > 5) {
@@ -124,7 +124,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, position, onPosi
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      
+
       // Snap logic
       if (isDragging) {
         let finalX = posRef.current.x;
@@ -167,7 +167,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, position, onPosi
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging) return;
     const touch = e.touches[0];
-    
+
     const dx = touch.clientX - mouseDownPos.current.x;
     const dy = touch.clientY - mouseDownPos.current.y;
     if (Math.sqrt(dx * dx + dy * dy) > 5) {
@@ -191,7 +191,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, position, onPosi
 
   const handleTouchEnd = () => {
     setIsDragging(false);
-    
+
     // Snap logic
     if (isDragging) {
       let finalX = posRef.current.x;
@@ -240,12 +240,12 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, position, onPosi
       )}
 
       {/* Actual bubble inner */}
-      <div className="bubble-circle">
-        {/* Robot / Chat SVG Icon */}
-        <svg className="bubble-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2C6.47715 2 2 6.47715 2 12C2 14.3361 2.79813 16.4858 4.1287 18.2109L2.29289 20.2929C1.90237 20.6834 1.90237 21.3166 2.29289 21.7071C2.68342 22.0976 3.31658 22.0976 3.70711 21.7071L6.09631 19.3179C7.75338 20.3958 9.79979 21 12 21C17.5228 21 22 16.5228 22 12C22 6.47715 17.5228 2 12 2Z" fill="currentColor"/>
-          <path d="M7 10.5C7 9.67157 7.67157 9 8.5 9C9.32843 9 10 9.67157 10 10.5C10 11.3284 9.32843 12 8.5 12C7.67157 12 7 11.3284 7 10.5ZM14 10.5C14 9.67157 14.6716 9 15.5 9C16.3284 9 17 9.67157 17 10.5C17 11.3284 16.3284 12 15.5 12C14.6716 12 14 11.3284 14 10.5ZM9.5 15C9.5 15 10.5 17 12 17C13.5 17 14.5 15 14.5 15H9.5Z" fill="white"/>
-        </svg>
+      <div className="bubble-circle" style={{ overflow: 'hidden', borderRadius: '50%' }}>
+        <img
+          src="/images/profile.png"
+          alt="Chat Bot"
+          style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+        />
       </div>
 
       {/* Floating tooltip message from JSON list */}

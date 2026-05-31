@@ -164,13 +164,27 @@ export const createConversation = async (request: CreateConversationRequest): Pr
   });
 };
 
-export const getSessionsConversations = async (sessionId: string, anonId?: string | null): Promise<any[]> => {
-  const query = anonId ? `?anon_id=${encodeURIComponent(anonId)}` : '';
+export const getSessionsConversations = async (
+  sessionId: string,
+  anonId?: string | null,
+  limit: number = 20,
+  offset: number = 0
+): Promise<any[]> => {
+  const queryParts: string[] = [];
+  if (anonId) queryParts.push(`anon_id=${encodeURIComponent(anonId)}`);
+  queryParts.push(`limit=${limit}`);
+  queryParts.push(`offset=${offset}`);
+  const query = `?${queryParts.join('&')}`;
   return await apiFetchJson<any[]>(`/sessions/${sessionId}/conversations${query}`);
 };
 
-export const getConversationMessages = async (conversationId: string): Promise<any[]> => {
-  return await apiFetchJson<any[]>(`/conversations/${conversationId}/messages`);
+export const getConversationMessages = async (
+  conversationId: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<any[]> => {
+  const query = `?limit=${limit}&offset=${offset}`;
+  return await apiFetchJson<any[]>(`/conversations/${conversationId}/messages${query}`);
 };
 
 export const getTickets = async (): Promise<any[]> => {

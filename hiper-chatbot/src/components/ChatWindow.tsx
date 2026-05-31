@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { Conversation, MockDashboardState, Message } from '../types';
 import { ChatHistory } from './ChatHistory';
 import {
-  buildScreenLabel,
   buildSuggestedChips,
   buildWelcomeSuggestions,
 } from './chat/chatHelpers';
@@ -49,13 +48,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     isInPortal,
   });
   const welcomeSuggestions = buildWelcomeSuggestions(suggestedChips);
-  
+
   // Resize states
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartPos = useRef({ x: 0, y: 0 });
   const resizeStartSize = useRef({ w: 0, h: 0 });
   const resizeDirection = useRef<'top' | 'side' | 'corner'>('corner');
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Resize Handlers
@@ -70,17 +69,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      
+
       let newW = resizeStartSize.current.w;
       let newH = resizeStartSize.current.h;
-      
+
       const dx = e.clientX - resizeStartPos.current.x;
       const dy = e.clientY - resizeStartPos.current.y;
 
       if (resizeDirection.current === 'top' || resizeDirection.current === 'corner') {
         newH = resizeStartSize.current.h - dy; // expanding upwards means negative dy increases height
       }
-      
+
       if (resizeDirection.current === 'side' || resizeDirection.current === 'corner') {
         if (alignment === 'right') {
           newW = resizeStartSize.current.w - dx; // expanding leftwards means negative dx increases width
@@ -128,11 +127,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setInputText('');
   };
 
-  const handleInspectScreen = () => {
-    if (isBusy) return;
-    const label = buildScreenLabel(dashboardState);
-    onSendMessage(`Analizar Pantalla: Por favor analiza la vista actual de "${label}" y explícame el estado o los errores si existen.`, true);
-  };
 
   // Simple formatter to convert markdown-like syntax to HTML safely
   const renderMessageContent = (content: string) => {
@@ -173,22 +167,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   return (
-    <div 
+    <div
       className={`chat-window-card animate-scale-up ${alignment === 'left' ? 'left-aligned' : ''} ${isResizing ? 'resizing' : ''}`}
       style={{ width: `${windowSize.width}px`, height: `${windowSize.height}px` }}
     >
       {/* Invisible resize handles */}
-      <div 
-        className="resize-handle top" 
-        onMouseDown={(e) => handleResizeStart(e, 'top')} 
+      <div
+        className="resize-handle top"
+        onMouseDown={(e) => handleResizeStart(e, 'top')}
       />
-      <div 
-        className={`resize-handle side ${alignment === 'left' ? 'right-side' : 'left-side'}`} 
-        onMouseDown={(e) => handleResizeStart(e, 'side')} 
+      <div
+        className={`resize-handle side ${alignment === 'left' ? 'right-side' : 'left-side'}`}
+        onMouseDown={(e) => handleResizeStart(e, 'side')}
       />
-      <div 
-        className={`resize-handle corner ${alignment === 'left' ? 'top-right' : 'top-left'}`} 
-        onMouseDown={(e) => handleResizeStart(e, 'corner')} 
+      <div
+        className={`resize-handle corner ${alignment === 'left' ? 'top-right' : 'top-left'}`}
+        onMouseDown={(e) => handleResizeStart(e, 'corner')}
       />
 
       {/* Header */}
@@ -247,30 +241,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                       {suggestion.label}
                     </button>
                   ))}
-                  {isInPortal ? (
-                    <button onClick={handleInspectScreen}>
-                      🔍 Analizar pantalla actual
-                    </button>
-                  ) : null}
+
                 </div>
               </div>
             ) : (
               <div className="messages-list">
-                {activeConversation.messages.map((msg: Message) => (
-                  <div key={msg.id} className={`message-bubble-row ${msg.role}`}>
-                    <div className="message-avatar">
-                      {msg.role === 'assistant' ? '🤖' : '👤'}
-                    </div>
-                    <div className="message-bubble-wrapper">
-                      <div className="message-bubble">
-                        {renderMessageContent(msg.content)}
+                {activeConversation.messages.map((msg: Message) => {
+                  if (msg.role === 'assistant' && !msg.content.trim()) {
+                    return null;
+                  }
+                  return (
+                    <div key={msg.id} className={`message-bubble-row ${msg.role}`}>
+                      <div className="message-avatar">
+                        {msg.role === 'assistant' ? '🤖' : '👤'}
                       </div>
-                      <span className="message-time">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div className="message-bubble-wrapper">
+                        <div className="message-bubble">
+                          {renderMessageContent(msg.content)}
+                        </div>
+                        <span className="message-time">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {isLoading && (!activeConversation.messages.length || activeConversation.messages[activeConversation.messages.length - 1].role !== 'assistant' || !activeConversation.messages[activeConversation.messages.length - 1].content) && (
                   <div className="message-bubble-row assistant">
@@ -291,8 +286,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     <span className="followup-label">🤖 ¿Necesitas algo más?</span>
                     <div className="followup-chips">
                       {suggestedChips.map((chip, idx) => (
-                        <button 
-                          key={idx} 
+                        <button
+                          key={idx}
                           className={`suggest-chip ${chip.isSupport ? 'support-chip' : ''} ${chip.isTicket ? 'ticket-chip' : ''}`}
                           onClick={() => handleChipClick(chip.query, chip.isSupport, chip.isTicket)}
                         >
@@ -313,17 +308,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {/* Footer / Input (Only show when in active chat view) */}
       {!showHistory && activeConversation && (
         <div className="chat-footer">
-          <div className="footer-actions">
-            <button
-              type="button"
-              className="inspect-screen-btn"
-              onClick={handleInspectScreen}
-              disabled={isBusy}
-              title="Permite al bot leer la tabla, campos y errores en pantalla"
-            >
-              🔍 Analizar Pantalla
-            </button>
-          </div>
 
           <form className="chat-input-form" onSubmit={handleSend}>
             <input

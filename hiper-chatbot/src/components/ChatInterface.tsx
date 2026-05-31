@@ -44,6 +44,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     dashboardState.activeTab === 'compras'
       ? conversationProcessTypeCompras
       : conversationProcessTypeCatalogo;
+
+  // Use a Ref to hold the latest active tab process type, so that session initialization
+  // does not re-trigger when navigating pages/tabs inside the portal.
+  const activeConversationProcessTypeRef = React.useRef(activeConversationProcessType);
+  useEffect(() => {
+    activeConversationProcessTypeRef.current = activeConversationProcessType;
+  }, [activeConversationProcessType]);
+
   const [isOpen, setIsOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
@@ -88,7 +96,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return trimmed.length > 0 ? trimmed : null;
   };
 
-  
+
 
   const getProviderIdFromProfileCb = React.useCallback((profile: Record<string, unknown> | null): string | null => {
     if (!profile) return null;
@@ -152,12 +160,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         console.log('[resolveOrCreateAuthenticatedSession] session not found (404), creating session with', {
           anon_id: anonIdForClaim,
           layer: 'internal',
-          process_type: activeConversationProcessType
+          process_type: activeConversationProcessTypeRef.current
         });
         const createdSession = await createSession({
           anon_id: anonIdForClaim,
           layer: 'internal',
-          process_type: activeConversationProcessType
+          process_type: activeConversationProcessTypeRef.current
         });
         // Remove guest anon ID after successful creation/claim
         localStorage.removeItem('hiper_chatbot_anon_id');
@@ -165,46 +173,60 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
       throw err;
     }
-  }, [activeConversationProcessType]);
+  }, []);
 
   const fetchAndSyncConversations = useCallback(async (sId: string, anonId: string | null) => {
     try {
       const backendConvs = await getSessionsConversations(sId, anonId);
       const syncedConversations: Conversation[] = [];
-      
+
       for (const backendConv of backendConvs) {
         const convId = backendConv.conversation_id || backendConv.id;
         if (!convId) continue;
-        
-        try {
-          const messagesData = await getConversationMessages(convId);
-          const messages = (messagesData as Array<Record<string, unknown>>).map(mapBackendMessage);
-          
-          syncedConversations.push({
-            id: convId,
-            title: backendConv.title || (messages.find(msg => msg.role === 'user')?.content.substring(0, 30) + '...') || 'Chat de soporte',
-            messages: messages,
-            createdAt: backendConv.created_at || Date.now(),
-            updatedAt: backendConv.updated_at || Date.now(),
-            anonId: anonId,
-            isClaimed: Boolean(isAuthenticated)
-          });
-        } catch (msgErr) {
-          console.error(`Failed to fetch messages for conversation ${convId}:`, msgErr);
+
+        let fallbackTitle = 'Chat de soporte';
+        const lastMsg = backendConv.last_message ? mapBackendMessage(backendConv.last_message) : null;
+        if (lastMsg) {
+          fallbackTitle = lastMsg.content.substring(0, 30) + (lastMsg.content.length > 30 ? '...' : '');
         }
+
+        syncedConversations.push({
+          id: convId,
+          title: backendConv.title || fallbackTitle,
+          messages: lastMsg ? [lastMsg] : [],
+          createdAt: backendConv.created_at || Date.now(),
+          updatedAt: backendConv.updated_at || Date.now(),
+          anonId: anonId,
+          isClaimed: Boolean(isAuthenticated)
+        });
       }
-      
+
       syncedConversations.sort((a, b) => b.updatedAt - a.updatedAt);
       setConversations(syncedConversations);
       saveConversations(syncedConversations);
-      
+
+      let finalConversations = syncedConversations;
       const lastActiveId = loadLastActiveConversationId();
       const active = syncedConversations.find((c) => c.id === lastActiveId) || syncedConversations[0];
       if (active) {
-        setActiveConversation(active);
-        saveLastActiveConversationId(active.id);
+        try {
+          const messagesData = await getConversationMessages(active.id);
+          const messages = (messagesData as Array<Record<string, unknown>>).map(mapBackendMessage);
+          
+          const updatedActive = { ...active, messages };
+          finalConversations = syncedConversations.map(c => c.id === active.id ? updatedActive : c);
+          
+          setConversations(finalConversations);
+          saveConversations(finalConversations);
+          setActiveConversation(updatedActive);
+          saveLastActiveConversationId(updatedActive.id);
+        } catch (msgErr) {
+          console.error(`Failed to fetch messages for active conversation ${active.id}:`, msgErr);
+          setActiveConversation(active);
+          saveLastActiveConversationId(active.id);
+        }
       }
-      return syncedConversations;
+      return finalConversations;
     } catch (error) {
       console.error('Failed to sync conversations from backend:', error);
       return [];
@@ -214,7 +236,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   // Initialize Session and Sync Conversations from backend
   useEffect(() => {
     let isMounted = true;
-    
+
     const initSession = async () => {
       // Clear local history when changing authentication state to avoid leaking guest chats to logged in user, or vice versa
       setConversations([]);
@@ -222,7 +244,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setActiveConversation(null);
       saveLastActiveConversationId(null);
       setSessionId(null);
-      
+
       try {
         const accessToken = getAccessToken();
         const storedAnonId = localStorage.getItem('hiper_chatbot_anon_id');
@@ -234,21 +256,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           isAuthenticated: Boolean(accessToken),
           anon_id: anonId,
           provider_id: providerId,
-          process_type: accessToken ? activeConversationProcessType : sessionProcessType
+          process_type: accessToken ? activeConversationProcessTypeRef.current : sessionProcessType
         });
-        
+
         let newSessionId: string;
         if (accessToken) {
           newSessionId = await resolveOrCreateAuthenticatedSession(providerId, anonIdForClaim);
         } else {
           newSessionId = await getGuestSessionId(anonId!);
         }
-        
+
         if (!isMounted) return;
-        
+
         console.log('[initSession] sessionId', newSessionId);
         setSessionId(newSessionId);
-        
+
         // Sync conversations from backend if authenticated
         if (accessToken) {
           await fetchAndSyncConversations(newSessionId, anonId);
@@ -257,13 +279,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         console.error('Failed to initialize session:', err);
       }
     };
-    
+
     initSession();
-    
+
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, fetchAndSyncConversations, sessionProcessType, activeConversationProcessType, getGuestSessionId, resolveProviderId, resolveOrCreateAuthenticatedSession]);
+  }, [isAuthenticated, fetchAndSyncConversations, sessionProcessType, getGuestSessionId, resolveProviderId, resolveOrCreateAuthenticatedSession]);
   const [isLoading, setIsLoading] = useState(false);
   const [isChatSwitching, setIsChatSwitching] = useState(false);
   const [bubblePosition, setBubblePosition] = useState({
@@ -276,6 +298,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const location = useLocation();
   const isInPortal = location.pathname.startsWith('/portal');
   const visibleConversations = isAuthenticated ? conversations : [];
+
+  useEffect(() => {
+    if (location.pathname === '/login') {
+      setIsOpen(false);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [isAuthenticated]);
 
   const showToast = useCallback(
     (type: 'error' | 'success' | 'warning', title: string, message: string) => {
@@ -343,7 +375,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
 
         const layer: 'internal' | 'external' = accessToken ? 'internal' : 'external';
-        const processType = accessToken ? activeConversationProcessType : sessionProcessType;
+        const processType = accessToken ? activeConversationProcessTypeRef.current : sessionProcessType;
 
         const payload = {
           session_id: sId!,
@@ -470,7 +502,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setIsLoading(false);
       setConversations(loadConversations());
     }
-  }, [activeConversation, dashboardState, handleApiError, accessToken, sessionId, activeConversationProcessType, getGuestSessionId, resolveProviderId, sessionProcessType, showToast, resolveOrCreateAuthenticatedSession]);
+  }, [activeConversation, dashboardState, handleApiError, accessToken, sessionId, getGuestSessionId, resolveProviderId, sessionProcessType, showToast, resolveOrCreateAuthenticatedSession]);
 
   // Listen to outer help triggers (e.g. login links)
   useEffect(() => {
@@ -484,7 +516,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const previousConversation = activeConversation;
     setIsChatSwitching(true);
     setActiveConversation(null);
-    
+
     try {
       const messagesData = await getConversationMessages(id);
       const messages = (messagesData as Array<Record<string, unknown>>).map(mapBackendMessage);
@@ -570,7 +602,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       }
 
       const layer: 'internal' | 'external' = accessToken ? 'internal' : 'external';
-      const processType = accessToken ? activeConversationProcessType : sessionProcessType;
+      const processType = accessToken ? activeConversationProcessTypeRef.current : sessionProcessType;
 
       const payload = {
         session_id: sId!,
@@ -608,13 +640,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleToggleOpen = async () => {
     setIsOpen(!isOpen);
-    
+
     // Auto-create or auto-select conversation when opening
     if (!isOpen) {
       const storedAnonId = localStorage.getItem('hiper_chatbot_anon_id');
       const anonIdForClaim = storedAnonId || createAnonId();
       const anonId = isAuthenticated ? null : anonIdForClaim;
-      
+
       let sId = sessionId;
       if (isAuthenticated && !sId) {
         setIsLoading(true);
@@ -633,10 +665,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         setIsLoading(true);
         const synced = await fetchAndSyncConversations(sId, anonId);
         setIsLoading(false);
-        
+
         const lastActiveId = loadLastActiveConversationId();
         const active = synced.find((c) => c.id === lastActiveId) || synced[0];
-        
+
         if (active) {
           setActiveConversation(active);
           saveLastActiveConversationId(active.id);

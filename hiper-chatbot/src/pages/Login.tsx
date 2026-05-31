@@ -8,8 +8,8 @@ import { getUserMessageFromError } from '../services/apiClient';
 export const Login = () => {
   const { state, onChange } = useDashboard();
   const navigate = useNavigate();
-  const [userVal, setUserVal] = useState('proveedor_hipermaxi');
-  const [passVal, setPassVal] = useState('password123');
+  const [userVal, setUserVal] = useState('');
+  const [passVal, setPassVal] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 

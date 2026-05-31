@@ -1268,10 +1268,11 @@
   border-bottom-left-radius: 2px;
 }
 
-.message-bubble.skeleton-bubble {
+.message-bubble-row.assistant .message-bubble.skeleton-bubble {
   position: relative;
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
+  width: 180px;
   overflow: hidden;
 }
 
@@ -1287,7 +1288,7 @@
 .skeleton-line {
   height: 8px;
   border-radius: 6px;
-  background: #e2e8f0;
+  background: #cbd5e1;
   margin-bottom: 8px;
 }
 

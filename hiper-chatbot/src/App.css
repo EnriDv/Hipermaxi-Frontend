@@ -875,9 +875,17 @@
 }
 
 @keyframes pulse-red {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.15); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.15);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Pulse rings for attention state */
@@ -904,6 +912,7 @@
     transform: scale(1);
     opacity: 0.4;
   }
+
   100% {
     transform: scale(1.6);
     opacity: 0;
@@ -974,7 +983,8 @@
 }
 
 .chat-window-card.resizing {
-  transition: none; /* Disable any transition during resize for performance */
+  transition: none;
+  /* Disable any transition during resize for performance */
   user-select: none;
 }
 
@@ -1029,8 +1039,15 @@
 }
 
 @keyframes chatSlideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .chat-header {
@@ -1121,7 +1138,8 @@
 }
 
 .welcome-avatar {
-  font-size: 2.5rem;
+  width: 10rem;
+  height: 10rem;
   margin-bottom: 12px;
 }
 
@@ -1319,21 +1337,41 @@
   animation: typing-bounce 1.4s infinite ease-in-out both;
 }
 
-.message-bubble.typing .dot:nth-child(1) { animation-delay: -0.32s; }
-.message-bubble.typing .dot:nth-child(2) { animation-delay: -0.16s; }
+.message-bubble.typing .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.message-bubble.typing .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes typing-bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1);
+  }
 }
 
 @keyframes skeleton-shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes chat-loading-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Chat Footer & Input */
@@ -1535,13 +1573,25 @@
    KEYFRAME ANIMATIONS
    ========================================================================== */
 @keyframes modalSlideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* ==========================================================================
@@ -1726,6 +1776,7 @@
     transform: translateX(120%) scale(0.9);
     opacity: 0;
   }
+
   to {
     transform: translateX(0) scale(1);
     opacity: 1;
@@ -1785,4 +1836,3 @@
   word-break: break-word;
   text-align: left;
 }
-

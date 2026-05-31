@@ -199,7 +199,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
           <div className="header-bot-info">
             <span className="bot-status-dot"></span>
-            <span className="bot-name">Asistente Hipermaxi</span>
+            <span className="bot-name">Maximo</span>
           </div>
         </div>
         <button className="minimize-btn" onClick={onMinimize} title="Minimizar chat">
@@ -232,8 +232,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           <div className="chat-messages-viewport">
             {activeConversation.messages.length === 0 ? (
               <div className="chat-welcome">
-                <div className="welcome-avatar">🤖</div>
-                <h3>¡Hola! Soy tu Asistente Inteligente</h3>
+                <div className="welcome-avatar">
+                  <img
+                    src="/images/profile.png"
+                    alt="Profile"
+                    style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                </div>
+                <h3>¡Hola! Soy Maximo tu Asistente Inteligente</h3>
                 <p>Puedo ayudarte a navegar y completar las tareas de este portal de proveedores de Hipermaxi.</p>
                 <div className="welcome-suggestions">
                   {welcomeSuggestions.map((suggestion) => (
@@ -253,7 +259,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   return (
                     <div key={msg.id} className={`message-bubble-row ${msg.role}`}>
                       <div className="message-avatar">
-                        {msg.role === 'assistant' ? '🤖' : '👤'}
+                        {msg.role === 'assistant' ? (
+                          <img
+                            src="/images/profile.png"
+                            alt="Profile"
+                            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          '👤'
+                        )}
                       </div>
                       <div className="message-bubble-wrapper">
                         <div className="message-bubble">
@@ -269,7 +283,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
                 {isLoading && (!activeConversation.messages.length || activeConversation.messages[activeConversation.messages.length - 1].role !== 'assistant' || !activeConversation.messages[activeConversation.messages.length - 1].content) && (
                   <div className="message-bubble-row assistant">
-                    <div className="message-avatar">🤖</div>
+                    <div className="message-avatar">
+                      <img
+                        src="/images/profile.png"
+                        alt="Profile"
+                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                      />
+                    </div>
                     <div className="message-bubble-wrapper" style={{ width: '100%' }}>
                       <div className="message-bubble skeleton-bubble">
                         <div className="skeleton-line" style={{ width: '90%' }}></div>
@@ -283,7 +303,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 {/* SUGGESTION CHIPS: Rendered below the last assistant message when idle */}
                 {!isLoading && activeConversation.messages.length > 0 && activeConversation.messages[activeConversation.messages.length - 1].role === 'assistant' && (
                   <div className="followup-suggestions-box animate-fade-in">
-                    <span className="followup-label">🤖 ¿Necesitas algo más?</span>
+                    <span className="followup-label">
+                      ¿Necesitas algo más?</span>
                     <div className="followup-chips">
                       {suggestedChips.map((chip, idx) => (
                         <button

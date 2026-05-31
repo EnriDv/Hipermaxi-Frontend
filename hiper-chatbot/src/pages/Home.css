@@ -1,0 +1,214 @@
+/* ==========================================================================
+   LANDING PAGE (HOME) STYLES
+   ========================================================================== */
+
+.landing-page-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #faebe1; /* Cream/Warm off-white background matching the image */
+  fontFamily: var(--font-primary);
+  box-sizing: border-box;
+}
+
+/* Header Bar */
+.landing-header {
+  background-color: #003b6f; /* Deep Navy Blue */
+  height: 52px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+}
+
+.landing-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landing-logo-emblem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.landing-header-title {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1.15rem;
+  letterSpacing: -0.2px;
+}
+
+.landing-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-btn-support {
+  background-color: #ffffff;
+  color: #003b6f;
+  border: 1px solid #003b6f;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all var(--transition-fast);
+}
+
+.landing-btn-support:hover {
+  background-color: #f1f5f9;
+}
+
+.landing-btn-start {
+  background-color: #e05206; /* Primary Orange */
+  color: #ffffff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all var(--transition-fast);
+}
+
+.landing-btn-start:hover {
+  background-color: #c2410c;
+}
+
+.landing-btn-start .btn-icon {
+  font-size: 0.9rem;
+}
+
+/* Main Body Content */
+.landing-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  box-sizing: border-box;
+}
+
+/* Large Center Logo */
+.large-logo-container {
+  margin-bottom: 25px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.8s ease-out;
+}
+
+/* Orange Panel Box */
+.portal-orange-box {
+  background-color: #e05206; /* Primary Orange panel background */
+  width: 100%;
+  max-width: 900px;
+  padding: 24px 30px;
+  box-sizing: border-box;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  text-align: center;
+  color: #ffffff;
+  animation: modalSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Sharp corners in the original image */
+  border-radius: 0;
+}
+
+.portal-box-title {
+  font-size: 1.85rem;
+  font-weight: 500;
+  color: #ffffff;
+  margin-bottom: 24px;
+  letterSpacing: 0.2px;
+}
+
+/* Two Column Grid */
+.portal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  margin-bottom: 30px;
+}
+
+@media (max-width: 640px) {
+  .portal-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+.portal-grid-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.col-illustration-container {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 120px;
+}
+
+.portal-grid-title {
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 6px 0;
+}
+
+.portal-grid-subtitle {
+  font-size: 0.78rem;
+  color: #ffffff;
+  opacity: 0.95;
+  margin: 0;
+  line-height: 1.3;
+  max-width: 280px;
+}
+
+/* Footer paragraph description inside Orange Box */
+.portal-box-footer-desc {
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: #ffffff;
+  opacity: 0.9;
+  border-top: 1.5px dashed rgba(255, 255, 255, 0.3);
+  padding-top: 18px;
+  margin: 0;
+  text-align: center;
+}
+
+/* Page Footer copyright */
+.landing-footer {
+  height: 48px;
+  background-color: #faebe1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #333333;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.version-badge {
+  background-color: #ef4444;
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.7rem;
+  border: 1px solid #dc2626;
+  margin-left: 2px;
+}

@@ -1,122 +1,158 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useCallback, useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { DashboardContext } from './context/DashboardContext';
+import { ChatInterface } from './components/ChatInterface';
+import { PortalLayout } from './layouts/PortalLayout';
+import { Login } from './pages/Login';
+import { Catalog } from './pages/Catalog';
+import { Orders } from './pages/Orders';
+import { Home } from './pages/Home';
+import type { MockDashboardState } from './types';
+import { getUserMessageFromError } from './services/apiClient';
+import { getAccessToken, getProviderProfile } from './services/authStorage';
+import './App.css';
+
+const INITIAL_DASHBOARD_STATE: MockDashboardState = {
+  isAuthenticated: false,
+  username: '',
+  activeTab: 'catalogo',
+  
+  // Empty initially, will be populated by fetch
+  productsList: [],
+  ordersList: [],
+
+  selectedOrderForInvoice: null,
+  selectedOrderForAVD: null,
+  invoiceScenario: 'A',
+  uploadedInvoiceFile: null,
+  newProductForm: undefined,
+};
+
+const getInitialDashboardState = (): MockDashboardState => {
+  const accessToken = getAccessToken();
+  const providerProfile = getProviderProfile();
+  const providerName = providerProfile && typeof providerProfile.name === 'string'
+    ? providerProfile.name
+    : '';
+
+  return {
+    ...INITIAL_DASHBOARD_STATE,
+    isAuthenticated: Boolean(accessToken),
+    username: providerName,
+  };
+};
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [dashboardState, setDashboardState] = useState<MockDashboardState>(() => getInitialDashboardState());
+  const [helpTrigger, setHelpTrigger] = useState<{ query: string; timestamp: number } | null>(null);
+  const [isAppLoading, setIsAppLoading] = useState(true);
+  const [appError, setAppError] = useState<string | null>(null);
+
+  const syncAuthFromStorage = useCallback(() => {
+    const accessToken = getAccessToken();
+    const providerProfile = getProviderProfile();
+    const providerName = providerProfile && typeof providerProfile.name === 'string'
+      ? providerProfile.name
+      : '';
+
+    setDashboardState((prev) => {
+      const nextAuth = Boolean(accessToken);
+      if (
+        prev.isAuthenticated === nextAuth &&
+        (nextAuth ? prev.username === providerName || !providerName : prev.username === '')
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        isAuthenticated: nextAuth,
+        username: nextAuth ? (providerName || prev.username) : '',
+      };
+    });
+  }, []);
+
+  // Fetch initial fake data
+  useEffect(() => {
+    fetch('/fakeData.json')
+      .then(res => res.json())
+      .then(data => {
+        setDashboardState(prev => ({
+          ...prev,
+          productsList: data.productsList || [],
+          ordersList: data.ordersList || [],
+        }));
+        setIsAppLoading(false);
+      })
+      .catch(err => {
+        console.error('Error loading fakeData.json', err);
+        const userMessage = getUserMessageFromError(err);
+        setAppError(userMessage || 'Ups, algo salio mal al cargar el portal. Intenta nuevamente o contacta a soporte.');
+        setIsAppLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = () => syncAuthFromStorage();
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [syncAuthFromStorage]);
+
+
+
+  const handleHelpTrigger = (query: string) => {
+    setHelpTrigger({
+      query,
+      timestamp: Date.now()
+    });
+  };
+
+  if (isAppLoading) {
+    return <div className="app-workspace"><div className="sim-panel">Cargando datos del portal...</div></div>;
+  }
+
+  if (appError) {
+    return <div className="app-workspace"><div className="sim-panel">{appError}</div></div>;
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <DashboardContext.Provider value={{ state: dashboardState, onChange: setDashboardState, onHelpTrigger: handleHelpTrigger }}>
+      <BrowserRouter>
+        <div className="app-workspace">
+          {/* Underlying Dashboard Screen */}
+          <main className="app-main-content">
+            <div className="portal-container">
+              <Routes>
+                {/* Landing Page Route */}
+                <Route path="/" element={<Home />} />
 
-      <div className="ticks"></div>
+                {/* Auth Route */}
+                <Route path="/login" element={<Login />} />
+                
+                {/* Protected Portal Routes */}
+                <Route path="/portal" element={
+                  dashboardState.isAuthenticated ? <PortalLayout /> : <Navigate to="/" replace />
+                }>
+                  <Route path="catalog" element={<Catalog />} />
+                  <Route path="orders" element={<Orders />} />
+                  {/* Default redirect inside portal */}
+                  <Route index element={<Navigate to="catalog" replace />} />
+                </Route>
+                
+                {/* Default redirect */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </div>
+          </main>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+          {/* Floating Interactive Chatbot (orange & white theme) */}
+          <ChatInterface 
+            dashboardState={dashboardState}
+            helpTrigger={helpTrigger}
+          />
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      </BrowserRouter>
+    </DashboardContext.Provider>
+  );
 }
 
-export default App
+export default App;

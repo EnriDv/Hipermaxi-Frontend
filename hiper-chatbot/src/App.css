@@ -147,7 +147,7 @@
   font-size: 2.2rem;
   font-weight: 800;
   color: var(--color-primary);
-  letter-spacing: -1px;
+  letterSpacing: -1px;
 }
 
 .login-header-logo p {
@@ -440,7 +440,7 @@
 }
 
 .sku-cell {
-  font-family: monospace;
+  fontFamily: monospace;
   font-weight: 700;
   color: var(--color-text-muted);
 }
@@ -1172,6 +1172,31 @@
   gap: 16px;
 }
 
+.chat-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+}
+
+.chat-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid #e2e8f0;
+  border-top-color: var(--color-primary);
+  animation: chat-loading-spin 0.9s linear infinite;
+}
+
+.chat-loading-text {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
 .message-bubble-row {
   display: flex;
   gap: 10px;
@@ -1243,6 +1268,33 @@
   border-bottom-left-radius: 2px;
 }
 
+.message-bubble.skeleton-bubble {
+  position: relative;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.message-bubble.skeleton-bubble::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 8px;
+  border-radius: 6px;
+  background: #e2e8f0;
+  margin-bottom: 8px;
+}
+
+.skeleton-line:last-child {
+  margin-bottom: 0;
+}
+
 .message-time {
   font-size: 0.7rem;
   color: var(--color-text-light);
@@ -1272,6 +1324,15 @@
 @keyframes typing-bounce {
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1); }
+}
+
+@keyframes skeleton-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes chat-loading-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Chat Footer & Input */
@@ -1384,7 +1445,7 @@
 }
 
 .msg-code {
-  font-family: monospace;
+  fontFamily: monospace;
   background: #f1f5f9;
   padding: 2px 4px;
   border-radius: 4px;

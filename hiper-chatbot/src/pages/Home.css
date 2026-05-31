@@ -7,7 +7,7 @@
   flex-direction: column;
   min-height: 100vh;
   background-color: #faebe1; /* Cream/Warm off-white background matching the image */
-  font-family: var(--font-primary);
+  fontFamily: var(--font-primary);
   box-sizing: border-box;
 }
 
@@ -39,7 +39,7 @@
   color: #ffffff;
   font-weight: 700;
   font-size: 1.15rem;
-  letter-spacing: -0.2px;
+  letterSpacing: -0.2px;
 }
 
 .landing-header-right {
@@ -127,7 +127,7 @@
   font-weight: 500;
   color: #ffffff;
   margin-bottom: 24px;
-  letter-spacing: 0.2px;
+  letterSpacing: 0.2px;
 }
 
 /* Two Column Grid */

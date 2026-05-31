@@ -12,6 +12,8 @@ export interface Conversation {
   messages: Message[];
   createdAt: number;
   updatedAt: number;
+  anonId?: string | null;
+  isClaimed?: boolean;
 }
 
 export interface DifyChatRequest {
@@ -19,7 +21,7 @@ export interface DifyChatRequest {
   inputs: {
     screenContent?: string;
     url?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   user: string;
   conversation_id: string;
@@ -38,29 +40,40 @@ export interface DifyChatResponse {
     usage?: {
       total_tokens: number;
     };
-    retriever_resources?: any[];
+    retriever_resources?: unknown[];
   };
   created_at: number;
 }
 
 export interface CreateSessionRequest {
   anon_id?: string | null;
-  layer: 'external' | 'internal';
-  process_type: string;
 }
 
 export interface CreateSessionResponse {
   session_id: string;
+  memory: any;
+  is_new: boolean;
+}
+
+export interface CreateConversationRequest {
+  session_id: string;
+  layer: 'external' | 'internal';
+  process_type: string;
+}
+
+export interface CreateConversationResponse {
+  conversation_id: string;
 }
 
 export interface ChatStreamRequest {
-  session_id: string;
+  conversation_id: string;
   message: string;
   image_url?: string | null;
 }
 
 export interface CreateTicketRequest {
   session_id: string;
+  conversation_id?: string | null;
   issue_summary: string;
   process_type: string;
 }
@@ -77,7 +90,7 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   access_token: string;
-  provider: Record<string, any>;
+  provider: Record<string, unknown>;
 }
 
 export interface ClaimSessionRequest {

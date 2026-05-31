@@ -1,18 +1,21 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { Conversation, MockDashboardState } from '../types';
 import { ChatBubble } from './ChatBubble';
 import { ChatWindow } from './ChatWindow';
-import { 
-  loadConversations, 
-  loadLastActiveConversationId, 
+import {
+  loadConversations,
+  saveConversations,
+  loadLastActiveConversationId,
   saveLastActiveConversationId,
   createNewConversation,
   addMessageToConversation,
   deleteConversation,
-  createAnonId
+  createAnonId,
+  updateConversation
 } from '../services/chatStorage';
-import { sendChatMessageToDifyStream, createSession, createTicket } from '../services/difyService';
-import { getAccessToken } from '../services/authStorage';
+import { sendChatMessageToDifyStream, createSession, createTicket, claimSession, createConversation, getSessionsConversations, getConversationMessages, resolveSession } from '../services/difyService';
+import { getAccessToken, getProviderProfile } from '../services/authStorage';
 import { getUserMessageFromError } from '../services/apiClient';
 
 interface ChatInterfaceProps {
@@ -32,6 +35,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   helpTrigger,
 }) => {
   const sessionProcessType = import.meta.env.VITE_SESSION_PROCESS_TYPE || 'activacion_codigo';
+  const isAuthenticated = Boolean(getAccessToken());
   const [isOpen, setIsOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
@@ -43,14 +47,107 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
     return loaded.length > 0 ? loaded[loaded.length - 1] : null;
   });
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  const fetchAndSyncConversations = useCallback(async (sId: string, anonId: string | null) => {
+    try {
+      const backendConvs = await getSessionsConversations(sId, anonId);
+      const syncedConversations: Conversation[] = [];
+      
+      for (const backendConv of backendConvs) {
+        const convId = backendConv.conversation_id || backendConv.id;
+        if (!convId) continue;
+        
+        try {
+          const messagesData = await getConversationMessages(convId);
+          const messages = messagesData.map((m: any) => ({
+            id: m.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+            content: m.content || m.text || m.query || m.answer || '',
+            timestamp: m.timestamp || m.created_at || Date.now()
+          }));
+          
+          syncedConversations.push({
+            id: convId,
+            title: backendConv.title || (messages.find(msg => msg.role === 'user')?.content.substring(0, 30) + '...') || 'Chat de soporte',
+            messages: messages,
+            createdAt: backendConv.created_at || Date.now(),
+            updatedAt: backendConv.updated_at || Date.now(),
+            anonId: anonId,
+            isClaimed: Boolean(isAuthenticated)
+          });
+        } catch (msgErr) {
+          console.error(`Failed to fetch messages for conversation ${convId}:`, msgErr);
+        }
+      }
+      
+      if (syncedConversations.length > 0) {
+        syncedConversations.sort((a, b) => b.updatedAt - a.updatedAt);
+        setConversations(syncedConversations);
+        saveConversations(syncedConversations);
+      }
+      return syncedConversations;
+    } catch (error) {
+      console.error('Failed to sync conversations from backend:', error);
+      return [];
+    }
+  }, [isAuthenticated]);
+
+  // Initialize Session and Sync Conversations from backend
+  useEffect(() => {
+    let isMounted = true;
+    
+    const initSession = async () => {
+      try {
+        const accessToken = getAccessToken();
+        const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
+        const providerProfile = getProviderProfile();
+        const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
+        
+        let sessionRes;
+        if (accessToken) {
+          sessionRes = await resolveSession({ provider_id: providerId });
+        } else {
+          sessionRes = await resolveSession({ anon_id: anonId });
+        }
+        
+        if (!isMounted) return;
+        
+        const newSessionId = sessionRes.session_id;
+        setSessionId(newSessionId);
+        
+        // Sync conversations from backend if authenticated
+        if (accessToken) {
+          await fetchAndSyncConversations(newSessionId, anonId);
+        } else {
+          setConversations([]);
+          saveConversations([]);
+          setActiveConversation(null);
+          saveLastActiveConversationId(null);
+        }
+      } catch (err) {
+        console.error('Failed to initialize session:', err);
+      }
+    };
+    
+    initSession();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated, fetchAndSyncConversations]);
   const [isLoading, setIsLoading] = useState(false);
-  const [bubblePosition, setBubblePosition] = useState({ 
-    x: window.innerWidth - 90, 
-    y: window.innerHeight - 100 
+  const [isChatSwitching, setIsChatSwitching] = useState(false);
+  const [bubblePosition, setBubblePosition] = useState({
+    x: window.innerWidth - 90,
+    y: window.innerHeight - 100
   });
   const [bubbleAlignment, setBubbleAlignment] = useState<'left' | 'right'>('right');
   const [chatWindowSize, setChatWindowSize] = useState({ width: 400, height: 600 });
   const lastHelpTriggerRef = useRef<number | null>(null);
+  const location = useLocation();
+  const isInPortal = location.pathname.startsWith('/portal');
+  const visibleConversations = isAuthenticated ? conversations : [];
 
   const showToast = useCallback(
     (type: 'error' | 'success' | 'warning', title: string, message: string) => {
@@ -73,6 +170,26 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     [showToast]
   );
 
+  const claimConversationIfNeeded = useCallback(
+    async (conv: Conversation): Promise<Conversation | null> => {
+      if (!isAuthenticated) return conv;
+      if (!conv.anonId || conv.isClaimed) return conv;
+
+      try {
+        const sId = sessionId;
+        if (sId) {
+          await claimSession(sId, { anon_id: conv.anonId });
+        }
+        const updated = updateConversation(conv.id, { isClaimed: true });
+        return updated || conv;
+      } catch (error) {
+        handleApiError(error, 'Error de Sesion', 'No pudimos validar tu sesion. Crea un nuevo chat o contacta a soporte.');
+        return null;
+      }
+    },
+    [handleApiError, isAuthenticated, sessionId]
+  );
+
   const handleSendMessage = useCallback(async (
     text: string,
     analyzeScreen: boolean,
@@ -82,27 +199,64 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setIsOpen(true);
     }
     let currentConv = activeConversation;
-    
+
     // Create new conversation if none exists
     if (!currentConv) {
       setIsLoading(true);
       try {
         const accessToken = getAccessToken();
-        const sessionRes = await createSession({
-          ...(accessToken ? {} : { anon_id: createAnonId() }),
-          layer: 'external',
-          process_type: sessionProcessType
+        const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
+
+        let sId = sessionId;
+        if (!sId) {
+          const providerProfile = getProviderProfile();
+          const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
+
+          let sessionRes;
+          if (accessToken) {
+            sessionRes = await resolveSession({ provider_id: providerId });
+          } else {
+            sessionRes = await resolveSession({ anon_id: anonId });
+          }
+
+          sId = sessionRes.session_id;
+          setSessionId(sId);
+        }
+
+        const layer = accessToken ? 'internal' : 'external';
+        const processType = accessToken
+          ? (dashboardState.activeTab === 'compras' ? 'carga_factura' : 'registro_sanitario')
+          : sessionProcessType;
+
+        const convRes = await createConversation({
+          session_id: sId,
+          layer,
+          process_type: processType
         });
-        currentConv = createNewConversation(sessionRes.session_id, text.length > 30 ? text.substring(0, 30) + '...' : text);
+
+        currentConv = createNewConversation(
+          convRes.conversation_id,
+          text.length > 30 ? text.substring(0, 30) + '...' : text,
+          { anonId, isClaimed: Boolean(accessToken) }
+        );
         const updated = loadConversations();
         setConversations(updated);
       } catch (err) {
         setIsLoading(false);
-        console.error('Failed to create session', err);
-        handleApiError(err, 'Error al Iniciar Chat', 'No se pudo crear la sesión para enviar tu consulta.');
+        console.error('Failed to create conversation', err);
+        handleApiError(err, 'Error al Iniciar Chat', 'No se pudo crear la conversación para enviar tu consulta.');
         return;
       }
     }
+
+    const claimedConversation = currentConv
+      ? await claimConversationIfNeeded(currentConv)
+      : null;
+    if (!claimedConversation) {
+      setIsLoading(false);
+      return;
+    }
+    currentConv = claimedConversation;
 
     // 1. Add user message to conversation
     // Capture snapshot of screen to attach if analyzed
@@ -110,7 +264,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     const updatedConv = addMessageToConversation(currentConv.id, 'user', text, snapshotText);
     if (!updatedConv) return;
-    
+
     setActiveConversation(updatedConv);
     setConversations(loadConversations());
     setIsLoading(true);
@@ -139,7 +293,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       // 3. Format Dify Request
       const streamRequest = {
-        session_id: currentConv.id,
+        conversation_id: currentConv.id,
         message: text,
       };
 
@@ -172,7 +326,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         'assistant',
         accumulatedAnswer
       );
-      
+
       if (finalConv) {
         // Override with the stored conversation to ensure correct IDs and timestamps
         setActiveConversation(finalConv);
@@ -181,7 +335,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       console.error('Error calling Dify API:', error);
       setIsLoading(false);
       handleApiError(error, 'Error de Comunicación', 'Error al transmitir la respuesta de la IA.');
-      
+
       const userMessage = getUserMessageFromError(error);
       const errorMessage = userMessage
         ? `<div class="error-message-placeholder">⚠️ ${userMessage}</div>`
@@ -196,7 +350,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setIsLoading(false);
       setConversations(loadConversations());
     }
-  }, [activeConversation, dashboardState, handleApiError, sessionProcessType]);
+  }, [activeConversation, dashboardState, handleApiError, sessionProcessType, claimConversationIfNeeded]);
 
   // Listen to outer help triggers (e.g. login links)
   useEffect(() => {
@@ -206,25 +360,82 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     void handleSendMessage(helpTrigger.query, false, { openChat: true });
   }, [helpTrigger, handleSendMessage]);
 
-  const handleSelectConversation = (id: string) => {
-    const loaded = loadConversations();
-    const active = loaded.find((c) => c.id === id);
-    if (active) {
-      setActiveConversation(active);
-      saveLastActiveConversationId(id);
+  const handleSelectConversation = async (id: string) => {
+    const previousConversation = activeConversation;
+    setIsChatSwitching(true);
+    setActiveConversation(null);
+    
+    try {
+      const messagesData = await getConversationMessages(id);
+      const messages = messagesData.map((m: any) => ({
+        id: m.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: m.content || m.text || m.query || m.answer || '',
+        timestamp: m.timestamp || m.created_at || Date.now()
+      }));
+
+      const loaded = loadConversations();
+      const index = loaded.findIndex((c) => c.id === id);
+      if (index !== -1) {
+        loaded[index].messages = messages;
+        loaded[index].updatedAt = Date.now();
+        saveConversations(loaded);
+      }
+
+      const selected = loaded.find((c) => c.id === id) || {
+        id,
+        title: messages.find(msg => msg.role === 'user')?.content.substring(0, 30) + '...' || 'Conversación nueva',
+        messages,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        anonId: isAuthenticated ? null : localStorage.getItem('hiper_chatbot_anon_id')
+      };
+
+      const claimed = await claimConversationIfNeeded(selected);
+      if (!claimed) {
+        setIsChatSwitching(false);
+        setActiveConversation(previousConversation || null);
+        return;
+      }
+
+      setActiveConversation(claimed);
+      setConversations(loadConversations());
+      saveLastActiveConversationId(claimed.id);
+    } catch (err) {
+      console.error('Failed to select conversation from backend:', err);
+      const loaded = loadConversations();
+      const selected = loaded.find((c) => c.id === id);
+      if (!selected) {
+        setIsChatSwitching(false);
+        setActiveConversation(previousConversation || null);
+        return;
+      }
+
+      const claimed = await claimConversationIfNeeded(selected);
+      if (!claimed) {
+        setIsChatSwitching(false);
+        setActiveConversation(previousConversation || null);
+        return;
+      }
+
+      setActiveConversation(claimed);
+      setConversations(loadConversations());
+      saveLastActiveConversationId(claimed.id);
+    } finally {
+      setIsChatSwitching(false);
     }
   };
 
   const handleDeleteConversation = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     // Confirmation prompt
     const confirmDelete = window.confirm('¿Estás seguro de que deseas eliminar este chat? Esta acción no se puede deshacer.');
     if (!confirmDelete) return;
 
     const remaining = deleteConversation(id);
     setConversations(remaining);
-    
+
     const lastActiveId = loadLastActiveConversationId();
     if (lastActiveId) {
       const active = remaining.find((c) => c.id === lastActiveId);
@@ -235,80 +446,98 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const handleCreateConversation = async () => {
+    const previousConversation = activeConversation;
     setIsLoading(true);
+    setIsChatSwitching(true);
+    setActiveConversation(null);
     try {
       const accessToken = getAccessToken();
-      const sessionRes = await createSession({
-        ...(accessToken ? {} : { anon_id: createAnonId() }),
-        layer: 'external',
-        process_type: sessionProcessType
+      const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
+
+      let sId = sessionId;
+      if (!sId) {
+        const providerProfile = getProviderProfile();
+        const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
+
+        let sessionRes;
+        if (accessToken) {
+          sessionRes = await resolveSession({ provider_id: providerId });
+        } else {
+          sessionRes = await resolveSession({ anon_id: anonId });
+        }
+
+        sId = sessionRes.session_id;
+        setSessionId(sId);
+      }
+
+      const layer = accessToken ? 'internal' : 'external';
+      const processType = accessToken
+        ? (dashboardState.activeTab === 'compras' ? 'carga_factura' : 'registro_sanitario')
+        : sessionProcessType;
+
+      const convRes = await createConversation({
+        session_id: sId,
+        layer,
+        process_type: processType
       });
-      const newConv = createNewConversation(sessionRes.session_id);
+
+      const newConv = createNewConversation(convRes.conversation_id, 'Conversación nueva', {
+        anonId,
+        isClaimed: Boolean(accessToken),
+      });
       setConversations(loadConversations());
       setActiveConversation(newConv);
     } catch (err) {
-      console.error('Error creating new session manually', err);
+      console.error('Error creating new conversation manually', err);
       handleApiError(err, 'Error al Crear Chat', 'No se pudo crear una nueva sesión de chat.');
+      setActiveConversation(previousConversation || null);
     } finally {
       setIsLoading(false);
+      setIsChatSwitching(false);
     }
   };
 
-  const handleToggleOpen = () => {
+  const handleToggleOpen = async () => {
     setIsOpen(!isOpen);
     
     // Auto-create or auto-select conversation when opening
     if (!isOpen) {
-      const loaded = loadConversations();
-      setConversations(loaded);
+      const anonId = isAuthenticated ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
       
-      const lastActiveId = loadLastActiveConversationId();
-      const active = loaded.find((c) => c.id === lastActiveId);
-      
-      if (active) {
-        setActiveConversation(active);
-      } else if (loaded.length > 0) {
-        setActiveConversation(loaded[loaded.length - 1]);
-        saveLastActiveConversationId(loaded[loaded.length - 1].id);
-      } else {
-        // Direct creation of new chat if none exists
-        handleCreateConversation();
+      let sId = sessionId;
+      if (isAuthenticated && !sId) {
+        setIsLoading(true);
+        const providerProfile = getProviderProfile();
+        const providerId = providerProfile ? (providerProfile.provider_id as string || providerProfile.id as string || null) : null;
+        try {
+          const sessionRes = await resolveSession({ provider_id: providerId });
+          sId = sessionRes.session_id;
+          setSessionId(sId);
+        } catch (err) {
+          console.error('Failed to resolve session on toggle open:', err);
+        }
+        setIsLoading(false);
       }
-    }
-  };
 
-  const handleCreateTicket = async () => {
-    if (!activeConversation) return;
-    setIsLoading(true);
-    try {
-      const ticketRes = await createTicket({
-        session_id: activeConversation.id,
-        issue_summary: 'Soporte solicitado desde el Asistente Hipermaxi',
-        process_type: dashboardState.activeTab === 'compras' ? 'SOP-05/06' : 'SOP-04'
-      });
-      
-      addMessageToConversation(
-        activeConversation.id,
-        'assistant',
-        `✅ He generado un ticket para derivar tu caso a soporte de segundo nivel.\n\n**ID de Ticket:** \`${ticketRes.ticket_id}\`\n\nEl equipo se contactará contigo por correo electrónico en las próximas 24 horas hábiles.`
-      );
-    } catch (error) {
-      console.error('Error creating ticket:', error);
-      handleApiError(error, 'Error al Crear Ticket', 'No se pudo generar el ticket de soporte.');
-      
-      const userMessage = getUserMessageFromError(error);
-      const errorMessage = userMessage
-        ? `<div class="error-message-placeholder">⚠️ ${userMessage}</div>`
-        : '<div class="error-message-placeholder">⚠️ Ups, algo salio mal al generar el ticket. Intenta nuevamente o contacta a soporte.</div>';
-
-      addMessageToConversation(
-        activeConversation.id,
-        'assistant',
-        errorMessage
-      );
-    } finally {
-      setIsLoading(false);
-      setConversations(loadConversations());
+      if (isAuthenticated && sId) {
+        setIsLoading(true);
+        const synced = await fetchAndSyncConversations(sId, anonId);
+        setIsLoading(false);
+        
+        const lastActiveId = loadLastActiveConversationId();
+        const active = synced.find((c) => c.id === lastActiveId) || synced[0];
+        
+        if (active) {
+          setActiveConversation(active);
+          saveLastActiveConversationId(active.id);
+        } else {
+          handleCreateConversation();
+        }
+      } else {
+        if (!activeConversation) {
+          handleCreateConversation();
+        }
+      }
     }
   };
 
@@ -316,23 +545,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div className="hiper-chatbot-widget">
       {isOpen ? (
         <ChatWindow
-          conversations={conversations}
+          conversations={visibleConversations}
           activeConversation={activeConversation}
           isLoading={isLoading}
+          isChatSwitching={isChatSwitching}
           onSendMessage={handleSendMessage}
           onSelectConversation={handleSelectConversation}
           onDeleteConversation={handleDeleteConversation}
           onCreateConversation={handleCreateConversation}
-          onCreateTicket={handleCreateTicket}
           onMinimize={handleToggleOpen}
           dashboardState={dashboardState}
+          isInPortal={isInPortal}
           alignment={bubbleAlignment}
           windowSize={chatWindowSize}
           onWindowResize={setChatWindowSize}
         />
       ) : (
-        <ChatBubble 
-          onOpen={handleToggleOpen} 
+        <ChatBubble
+          onOpen={handleToggleOpen}
           position={bubblePosition}
           onPositionChange={(pos, align) => {
             setBubblePosition(pos);
@@ -350,9 +580,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <span>{toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : '✅'}</span>
                 <span className="toast-title" style={{ marginLeft: '6px' }}>{toast.title}</span>
               </div>
-              <button 
-                type="button" 
-                className="toast-close" 
+              <button
+                type="button"
+                className="toast-close"
                 onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
               >
                 ✕

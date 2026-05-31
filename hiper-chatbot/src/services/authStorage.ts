@@ -28,7 +28,7 @@ export const clearAccessToken = (): void => {
   }
 };
 
-export const setProviderProfile = (profile: Record<string, any>): void => {
+export const setProviderProfile = (profile: Record<string, unknown>): void => {
   try {
     localStorage.setItem(STORAGE_KEYS.PROVIDER_PROFILE, JSON.stringify(profile || {}));
   } catch (error) {
@@ -36,7 +36,7 @@ export const setProviderProfile = (profile: Record<string, any>): void => {
   }
 };
 
-export const getProviderProfile = (): Record<string, any> | null => {
+export const getProviderProfile = (): Record<string, unknown> | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.PROVIDER_PROFILE);
     return raw ? JSON.parse(raw) : null;

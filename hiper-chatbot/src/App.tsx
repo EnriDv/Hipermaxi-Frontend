@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DashboardContext } from './context/DashboardContext';
 import { ChatInterface } from './components/ChatInterface';
@@ -9,6 +9,7 @@ import { Orders } from './pages/Orders';
 import { Home } from './pages/Home';
 import type { MockDashboardState } from './types';
 import { getUserMessageFromError } from './services/apiClient';
+import { getAccessToken, getProviderProfile } from './services/authStorage';
 import './App.css';
 
 const INITIAL_DASHBOARD_STATE: MockDashboardState = {
@@ -27,11 +28,48 @@ const INITIAL_DASHBOARD_STATE: MockDashboardState = {
   newProductForm: undefined,
 };
 
+const getInitialDashboardState = (): MockDashboardState => {
+  const accessToken = getAccessToken();
+  const providerProfile = getProviderProfile();
+  const providerName = providerProfile && typeof providerProfile.name === 'string'
+    ? providerProfile.name
+    : '';
+
+  return {
+    ...INITIAL_DASHBOARD_STATE,
+    isAuthenticated: Boolean(accessToken),
+    username: providerName,
+  };
+};
+
 function App() {
-  const [dashboardState, setDashboardState] = useState<MockDashboardState>(INITIAL_DASHBOARD_STATE);
+  const [dashboardState, setDashboardState] = useState<MockDashboardState>(() => getInitialDashboardState());
   const [helpTrigger, setHelpTrigger] = useState<{ query: string; timestamp: number } | null>(null);
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [appError, setAppError] = useState<string | null>(null);
+
+  const syncAuthFromStorage = useCallback(() => {
+    const accessToken = getAccessToken();
+    const providerProfile = getProviderProfile();
+    const providerName = providerProfile && typeof providerProfile.name === 'string'
+      ? providerProfile.name
+      : '';
+
+    setDashboardState((prev) => {
+      const nextAuth = Boolean(accessToken);
+      if (
+        prev.isAuthenticated === nextAuth &&
+        (nextAuth ? prev.username === providerName || !providerName : prev.username === '')
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        isAuthenticated: nextAuth,
+        username: nextAuth ? (providerName || prev.username) : '',
+      };
+    });
+  }, []);
 
   // Fetch initial fake data
   useEffect(() => {
@@ -52,6 +90,12 @@ function App() {
         setIsAppLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    const handleStorage = () => syncAuthFromStorage();
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [syncAuthFromStorage]);
 
 
 

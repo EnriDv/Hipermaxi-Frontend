@@ -1,17 +1,31 @@
 import { useDashboard } from '../context/DashboardContext';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { clearAccessToken, clearProviderProfile } from '../services/authStorage';
+import { logoutAPI } from '../services/difyService';
+import { getUserMessageFromError } from '../services/apiClient';
 
 export const Sidebar = () => {
   const { state, onChange } = useDashboard();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    onChange({
-      ...state,
-      isAuthenticated: false,
-      username: '',
-    });
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await logoutAPI();
+    } catch (error) {
+      const userMessage = getUserMessageFromError(error);
+      if (userMessage) {
+        window.alert(userMessage);
+      }
+    } finally {
+      clearAccessToken();
+      clearProviderProfile();
+      onChange({
+        ...state,
+        isAuthenticated: false,
+        username: '',
+      });
+      navigate('/');
+    }
   };
 
   return (

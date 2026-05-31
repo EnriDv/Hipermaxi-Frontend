@@ -61,7 +61,11 @@ export const saveLastActiveConversationId = (id: string | null): void => {
   }
 };
 
-export const createNewConversation = (sessionId: string, title = 'Conversación nueva'): Conversation => {
+export const createNewConversation = (
+  sessionId: string,
+  title = 'Conversación nueva',
+  meta?: { anonId?: string | null; isClaimed?: boolean }
+): Conversation => {
   const conversations = loadConversations();
   const newConv: Conversation = {
     id: sessionId,
@@ -69,6 +73,8 @@ export const createNewConversation = (sessionId: string, title = 'Conversación 
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    anonId: meta?.anonId ?? null,
+    isClaimed: meta?.isClaimed ?? false,
   };
   
   conversations.push(newConv);
@@ -102,6 +108,24 @@ export const addMessageToConversation = (
   if (conversations[index].messages.filter(m => m.role === 'user').length === 1 && role === 'user') {
     conversations[index].title = content.length > 30 ? content.substring(0, 30) + '...' : content;
   }
+
+  saveConversations(conversations);
+  return conversations[index];
+};
+
+export const updateConversation = (
+  conversationId: string,
+  updates: Partial<Conversation>
+): Conversation | null => {
+  const conversations = loadConversations();
+  const index = conversations.findIndex((c) => c.id === conversationId);
+  if (index === -1) return null;
+
+  conversations[index] = {
+    ...conversations[index],
+    ...updates,
+    updatedAt: Date.now(),
+  };
 
   saveConversations(conversations);
   return conversations[index];

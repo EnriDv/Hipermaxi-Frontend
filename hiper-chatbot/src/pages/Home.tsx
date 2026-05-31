@@ -61,31 +61,11 @@ export const Home = () => {
 
       <main className="landing-body">
         <div className="large-logo-container">
-          <svg viewBox="0 0 300 180" width="300" height="180" xmlns="http://www.w3.org/2000/svg">
-            <path d="M 75 110 A 75 75 0 0 1 225 110 Z" fill="#e05206" stroke="#003b6f" strokeWidth="8" />
-            
-            <g transform="translate(0, 8)">
-              <rect x="134" y="56" width="9" height="42" rx="4.5" fill="#ffffff" />
-              <rect x="157" y="56" width="9" height="42" rx="4.5" fill="#ffffff" />
-              <path d="M 143 70 Q 150 64 157 70" stroke="#ffffff" strokeWidth="4.5" fill="none" strokeLinecap="round" />
-              <path d="M 143 82 Q 150 88 157 82" stroke="#ffffff" strokeWidth="4.5" fill="none" strokeLinecap="round" />
-            </g>
-            
-            <rect x="20" y="102" width="260" height="56" rx="6" fill="#e05206" stroke="#003b6f" strokeWidth="8" />
-            
-            <text 
-              x="150" 
-              y="144" 
-              fontFamily="'Outfit', 'Outfit-Bold', sans-serif" 
-              fontWeight="900" 
-              fontSize="32" 
-              fill="#ffffff" 
-              textAnchor="middle" 
-              letterSpacing="0.5"
-            >
-              HIPERMAXI
-            </text>
-          </svg>
+          <img
+            src="/images/logo.png"
+            alt="Hipermaxi"
+            style={{ width: '280px', height: 'auto', objectFit: 'contain' }}
+          />
         </div>
 
         <section className="portal-orange-box">

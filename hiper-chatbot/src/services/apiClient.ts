@@ -157,7 +157,6 @@ export const apiFetchJson = async <T>(path: string, options: RequestInit = {}): 
     throw normalizeApiError(error);
   }
   if (!response.ok) {
-    // Try to extract a helpful server-side error body (json or text)
     let serverErrorBody: unknown = undefined;
     try {
       const txt = await response.clone().text();

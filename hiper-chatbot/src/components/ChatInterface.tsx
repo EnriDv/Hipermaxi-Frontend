@@ -137,6 +137,36 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return created.session_id;
   }, [sessionProcessType]);
 
+  const resolveOrCreateAuthenticatedSession = React.useCallback(async (
+    providerId: string | null,
+    anonIdForClaim: string
+  ): Promise<string> => {
+    try {
+      console.log('[resolveOrCreateAuthenticatedSession] trying to resolve session', { provider_id: providerId });
+      const sessionRes = await resolveSession({ provider_id: providerId });
+      // If found, clean up any guest anon ID from localStorage since session is resolved
+      localStorage.removeItem('hiper_chatbot_anon_id');
+      return sessionRes.session_id;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        console.log('[resolveOrCreateAuthenticatedSession] session not found (404), creating session with', {
+          anon_id: anonIdForClaim,
+          layer: 'internal',
+          process_type: activeConversationProcessType
+        });
+        const createdSession = await createSession({
+          anon_id: anonIdForClaim,
+          layer: 'internal',
+          process_type: activeConversationProcessType
+        });
+        // Remove guest anon ID after successful creation/claim
+        localStorage.removeItem('hiper_chatbot_anon_id');
+        return createdSession.session_id;
+      }
+      throw err;
+    }
+  }, [activeConversationProcessType]);
+
   const fetchAndSyncConversations = useCallback(async (sId: string, anonId: string | null) => {
     try {
       const backendConvs = await getSessionsConversations(sId, anonId);
@@ -195,10 +225,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       
       try {
         const accessToken = getAccessToken();
-        if (accessToken) {
-          localStorage.removeItem('hiper_chatbot_anon_id');
-        }
-        const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
+        const storedAnonId = localStorage.getItem('hiper_chatbot_anon_id');
+        const anonIdForClaim = storedAnonId || createAnonId();
+        const anonId = accessToken ? null : anonIdForClaim;
         const providerProfile = getProviderProfile();
         const providerId = resolveProviderId(providerProfile, accessToken);
         console.log('[initSession] start', {
@@ -210,8 +239,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         
         let newSessionId: string;
         if (accessToken) {
-          const sessionRes = await resolveSession({ provider_id: providerId });
-          newSessionId = sessionRes.session_id;
+          newSessionId = await resolveOrCreateAuthenticatedSession(providerId, anonIdForClaim);
         } else {
           newSessionId = await getGuestSessionId(anonId!);
         }
@@ -235,7 +263,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, fetchAndSyncConversations, sessionProcessType, activeConversationProcessType, getGuestSessionId, resolveProviderId]);
+  }, [isAuthenticated, fetchAndSyncConversations, sessionProcessType, activeConversationProcessType, getGuestSessionId, resolveProviderId, resolveOrCreateAuthenticatedSession]);
   const [isLoading, setIsLoading] = useState(false);
   const [isChatSwitching, setIsChatSwitching] = useState(false);
   const [bubblePosition, setBubblePosition] = useState({
@@ -297,16 +325,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (!currentConv) {
       setIsLoading(true);
       try {
-        const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
+        const storedAnonId = localStorage.getItem('hiper_chatbot_anon_id');
+        const anonIdForClaim = storedAnonId || createAnonId();
+        const anonId = accessToken ? null : anonIdForClaim;
 
         let sId = sessionId;
         if (accessToken) {
           if (!sId) {
             const providerProfile = getProviderProfile();
             const providerId = resolveProviderId(providerProfile, accessToken);
-            console.log('[resolveSession] provider_id', providerId);
-            const sessionRes = await resolveSession({ provider_id: providerId });
-            sId = sessionRes.session_id;
+            sId = await resolveOrCreateAuthenticatedSession(providerId, anonIdForClaim);
             setSessionId(sId);
           }
         } else {
@@ -442,7 +470,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setIsLoading(false);
       setConversations(loadConversations());
     }
-  }, [activeConversation, dashboardState, handleApiError, accessToken, sessionId, activeConversationProcessType, getGuestSessionId, resolveProviderId, sessionProcessType, showToast]);
+  }, [activeConversation, dashboardState, handleApiError, accessToken, sessionId, activeConversationProcessType, getGuestSessionId, resolveProviderId, sessionProcessType, showToast, resolveOrCreateAuthenticatedSession]);
 
   // Listen to outer help triggers (e.g. login links)
   useEffect(() => {
@@ -524,16 +552,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setIsChatSwitching(true);
     setActiveConversation(null);
     try {
-      const anonId = accessToken ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
+      const storedAnonId = localStorage.getItem('hiper_chatbot_anon_id');
+      const anonIdForClaim = storedAnonId || createAnonId();
+      const anonId = accessToken ? null : anonIdForClaim;
 
       let sId = sessionId;
       if (accessToken) {
         if (!sId) {
           const providerProfile = getProviderProfile();
           const providerId = resolveProviderId(providerProfile, accessToken);
-          console.log('[resolveSession] provider_id', providerId);
-          const sessionRes = await resolveSession({ provider_id: providerId });
-          sId = sessionRes.session_id;
+          sId = await resolveOrCreateAuthenticatedSession(providerId, anonIdForClaim);
           setSessionId(sId);
         }
       } else {
@@ -583,7 +611,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     
     // Auto-create or auto-select conversation when opening
     if (!isOpen) {
-      const anonId = isAuthenticated ? null : (localStorage.getItem('hiper_chatbot_anon_id') || createAnonId());
+      const storedAnonId = localStorage.getItem('hiper_chatbot_anon_id');
+      const anonIdForClaim = storedAnonId || createAnonId();
+      const anonId = isAuthenticated ? null : anonIdForClaim;
       
       let sId = sessionId;
       if (isAuthenticated && !sId) {
@@ -591,11 +621,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         const providerProfile = getProviderProfile();
         const providerId = resolveProviderId(providerProfile, accessToken);
         try {
-          const sessionRes = await resolveSession({ provider_id: providerId });
-          sId = sessionRes.session_id;
+          sId = await resolveOrCreateAuthenticatedSession(providerId, anonIdForClaim);
           setSessionId(sId);
         } catch (err) {
-          console.error('Failed to resolve session on toggle open:', err);
+          console.error('Failed to resolve/create session on toggle open:', err);
         }
         setIsLoading(false);
       }

@@ -1,27 +1,52 @@
 import React, { useState } from 'react';
 import { useDashboard } from '../context/DashboardContext';
 import { useNavigate, Navigate } from 'react-router-dom';
+import { loginAPI } from '../services/difyService';
+import { clearAccessToken, setAccessToken, setProviderProfile } from '../services/authStorage';
+import { getUserMessageFromError } from '../services/apiClient';
 
 export const Login = () => {
   const { state, onChange, onHelpTrigger } = useDashboard();
   const navigate = useNavigate();
   const [userVal, setUserVal] = useState('proveedor_hipermaxi');
   const [passVal, setPassVal] = useState('password123');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const getLoginErrorMessage = (error: unknown): string => {
+    const userMessage = getUserMessageFromError(error);
+    if (userMessage) return userMessage;
+    return 'Ups, algo salio mal al iniciar sesion. Intenta nuevamente o contacta a soporte.';
+  };
 
   // If already authenticated, redirect to catalog
   if (state.isAuthenticated) {
     return <Navigate to="/portal/catalog" replace />;
   }
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (userVal.trim() && passVal.trim()) {
+    const email = userVal.trim();
+    const password = passVal;
+    if (!email || !password) return;
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const response = await loginAPI({ email, password });
+      setAccessToken(response.access_token);
+      setProviderProfile(response.provider || {});
       onChange({
         ...state,
         isAuthenticated: true,
-        username: userVal,
+        username: response.provider?.name ?? email,
       });
       navigate('/portal/catalog');
+    } catch (error) {
+      console.error('Login failed', error);
+      clearAccessToken();
+      setErrorMessage(getLoginErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -43,41 +68,29 @@ export const Login = () => {
         <form className="login-form" onSubmit={handleLogin}>
           <div className="login-form-group">
             <label htmlFor="user">Código o Nombre de Usuario</label>
-            <input 
-              type="text" 
-              id="user" 
-              value={userVal} 
-              onChange={(e) => setUserVal(e.target.value)} 
-              required 
+            <input
+              type="text"
+              id="user"
+              value={userVal}
+              onChange={(e) => setUserVal(e.target.value)}
+              required
             />
           </div>
           <div className="login-form-group">
             <label htmlFor="pass">Contraseña de Seguridad</label>
-            <input 
-              type="password" 
-              id="pass" 
-              value={passVal} 
-              onChange={(e) => setPassVal(e.target.value)} 
-              required 
+            <input
+              type="password"
+              id="pass"
+              value={passVal}
+              onChange={(e) => setPassVal(e.target.value)}
+              required
             />
           </div>
-          <button type="submit" className="login-submit-btn">
+          <button type="submit" className="login-submit-btn" disabled={isSubmitting}>
             Iniciar Sesión
           </button>
         </form>
-
-        <div className="login-help-links">
-          <div className="help-section-title">¿Tienes problemas de acceso?</div>
-          <button type="button" onClick={() => handleAuthHelpClick(1)}>
-            🔑 Solicitar usuario nuevo (Flujo 1)
-          </button>
-          <button type="button" onClick={() => handleAuthHelpClick(3)}>
-            ✉️ Reenvío de clave por extravío (Flujo 3)
-          </button>
-          <button type="button" onClick={() => handleAuthHelpClick(2)}>
-            ⚙️ Activar Código de Catálogo (Flujo 2)
-          </button>
-        </div>
+        {errorMessage ? <div className="login-error-message">{errorMessage}</div> : null}
       </div>
     </div>
   );

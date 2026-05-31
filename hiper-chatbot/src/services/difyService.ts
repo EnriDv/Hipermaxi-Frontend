@@ -8,71 +8,54 @@ import type {
   LoginResponse,
   ClaimSessionRequest
 } from '../types';
+import { apiFetch, apiFetchJson, createApiErrorFromStatus, normalizeApiError } from './apiClient';
 
-/**
- * Real POST /sessions
- */
 export const createSession = async (request: CreateSessionRequest): Promise<CreateSessionResponse> => {
-  const response = await fetch('/sessions', {
+  return await apiFetchJson<CreateSessionResponse>('/sessions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(request)
   });
-  
-  if (!response.ok) {
-    throw new Error(`Error creating session: ${response.statusText}`);
-  }
-  
-  return await response.json();
 };
 
-/**
- * Real POST /tickets
- */
 export const createTicket = async (request: CreateTicketRequest): Promise<CreateTicketResponse> => {
-  const response = await fetch('/tickets', {
+  return await apiFetchJson<CreateTicketResponse>('/tickets', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(request)
   });
-  
-  if (!response.ok) {
-    throw new Error(`Error creating ticket: ${response.statusText}`);
-  }
-  
-  return await response.json();
 };
 
-/**
- * Real streaming request to POST /chat/stream endpoint
- */
 export const sendChatMessageToDifyStream = async (
   request: ChatStreamRequest,
   screenContext: any,
   onChunk: (chunk: string, sessionId: string) => void
 ): Promise<void> => {
-  // In a real scenario, you might send screenContext in another way if the API allows it.
-  // For now, we only send what the ChatStreamRequest contract dictates: session_id, message, image_url
-  
-  const response = await fetch('/chat/stream', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream' // or application/json if chunked, usually SSE is text/event-stream
-    },
-    body: JSON.stringify({
-      session_id: request.session_id,
-      message: request.message,
-      image_url: request.image_url
-    })
-  });
+ 
+  let response: Response;
+  try {
+    response = await apiFetch('/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream' 
+      },
+      body: JSON.stringify({
+        session_id: request.session_id,
+        message: request.message,
+        image_url: request.image_url
+      })
+    });
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
 
   if (!response.ok) {
-    throw new Error(`Error streaming chat: ${response.statusText}`);
+    throw createApiErrorFromStatus(response.status, response.statusText);
   }
 
   if (!response.body) {
@@ -82,6 +65,7 @@ export const sendChatMessageToDifyStream = async (
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
 
+  let reportedInvalidJson = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -104,14 +88,16 @@ export const sendChatMessageToDifyStream = async (
               if (dataObj.answer) {
                 onChunk(dataObj.answer, request.session_id);
               }
-            } catch {
-              // If it's not JSON, it might just be the raw text string
+            } catch (error) {
+              if (!reportedInvalidJson) {
+                reportedInvalidJson = true;
+                console.warn('SSE chunk was not valid JSON. Falling back to raw text.', error);
+              }
               onChunk(dataStr, request.session_id);
             }
           }
         }
       } else {
-        // If the API just returns raw chunked text
         onChunk(chunkText, request.session_id);
       }
     }
@@ -120,64 +106,34 @@ export const sendChatMessageToDifyStream = async (
   }
 };
 
-/**
- * Real POST /auth/login
- */
 export const loginAPI = async (request: LoginRequest): Promise<LoginResponse> => {
-  const response = await fetch('/auth/login', {
+  return await apiFetchJson<LoginResponse>('/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request)
   });
-  if (!response.ok) throw new Error(`Error login: ${response.statusText}`);
-  return await response.json();
 };
 
-/**
- * Real POST /auth/logout
- */
 export const logoutAPI = async (): Promise<any> => {
-  const response = await fetch('/auth/logout', { method: 'POST' });
-  if (!response.ok) throw new Error(`Error logout: ${response.statusText}`);
-  return await response.json();
+  return await apiFetchJson('/auth/logout', { method: 'POST' });
 };
 
-/**
- * Real POST /sessions/{session_id}/claim
- */
 export const claimSession = async (sessionId: string, request: ClaimSessionRequest): Promise<any> => {
-  const response = await fetch(`/sessions/${sessionId}/claim`, {
+  return await apiFetchJson(`/sessions/${sessionId}/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request)
   });
-  if (!response.ok) throw new Error(`Error claiming session: ${response.statusText}`);
-  return await response.json();
 };
 
-/**
- * Real GET /sessions/{session_id}/messages
- */
 export const getSessionMessages = async (sessionId: string): Promise<any[]> => {
-  const response = await fetch(`/sessions/${sessionId}/messages`);
-  if (!response.ok) throw new Error(`Error fetching messages: ${response.statusText}`);
-  return await response.json();
+  return await apiFetchJson<any[]>(`/sessions/${sessionId}/messages`);
 };
 
-/**
- * Real GET /tickets
- */
 export const getTickets = async (): Promise<any[]> => {
-  const response = await fetch('/tickets');
-  if (!response.ok) throw new Error(`Error fetching tickets: ${response.statusText}`);
-  return await response.json();
+  return await apiFetchJson<any[]>('/tickets');
 };
 
-/**
- * Real GET /health
- */
 export const getHealth = async (): Promise<any> => {
-  const response = await fetch('/health');
-  if (!response.ok) throw new Error(`Error health check: ${response.statusText}`);
-  return await response.json();
+  return await apiFetchJson('/health');
 };

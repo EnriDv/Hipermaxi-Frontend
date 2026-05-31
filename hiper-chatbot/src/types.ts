@@ -71,8 +71,8 @@ export interface CreateTicketResponse {
 
 // Additional OpenAPI Contract Types
 export interface LoginRequest {
-  email?: string;
-  password?: string;
+  email: string;
+  password: string;
 }
 
 export interface LoginResponse {
@@ -136,13 +136,10 @@ export interface MockDashboardState {
   invoiceScenario: 'A' | 'B' | 'C';
   uploadedInvoiceFile: { name: string; size: string; status: string; error?: string } | null;
   newProductForm?: {
+    description: string;
+    internalCode: string;
     sanitaryRegister: string;
     hasProductImage: boolean;
     priceCatalog: PriceCatalogItem[];
-  };
-  activeError?: {
-    code: number;
-    message: string;
-    timestamp: number;
   };
 }

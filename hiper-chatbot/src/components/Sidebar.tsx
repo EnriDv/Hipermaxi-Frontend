@@ -11,7 +11,7 @@ export const Sidebar = () => {
       isAuthenticated: false,
       username: '',
     });
-    navigate('/login');
+    navigate('/');
   };
 
   return (

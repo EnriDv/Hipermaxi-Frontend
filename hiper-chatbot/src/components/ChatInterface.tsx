@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Conversation, MockDashboardState } from '../types';
 import { ChatBubble } from './ChatBubble';
 import { ChatWindow } from './ChatWindow';
@@ -9,24 +9,40 @@ import {
   createNewConversation,
   addMessageToConversation,
   deleteConversation,
-  getOrCreateAnonId
+  createAnonId
 } from '../services/chatStorage';
 import { sendChatMessageToDifyStream, createSession, createTicket } from '../services/difyService';
+import { getAccessToken } from '../services/authStorage';
+import { getUserMessageFromError } from '../services/apiClient';
 
 interface ChatInterfaceProps {
   dashboardState: MockDashboardState;
-  onDashboardError: (error: any) => void;
   helpTrigger: { query: string; timestamp: number } | null;
+}
+
+interface ToastMessage {
+  id: string;
+  type: 'error' | 'success' | 'warning';
+  title: string;
+  message: string;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   dashboardState,
-  onDashboardError,
   helpTrigger,
 }) => {
+  const sessionProcessType = import.meta.env.VITE_SESSION_PROCESS_TYPE || 'activacion_codigo';
   const [isOpen, setIsOpen] = useState(false);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
+  const [activeConversation, setActiveConversation] = useState<Conversation | null>(() => {
+    const loaded = loadConversations();
+    const lastActiveId = loadLastActiveConversationId();
+    if (lastActiveId) {
+      return loaded.find((c) => c.id === lastActiveId) ?? null;
+    }
+    return loaded.length > 0 ? loaded[loaded.length - 1] : null;
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [bubblePosition, setBubblePosition] = useState({ 
     x: window.innerWidth - 90, 
@@ -34,70 +50,48 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   });
   const [bubbleAlignment, setBubbleAlignment] = useState<'left' | 'right'>('right');
   const [chatWindowSize, setChatWindowSize] = useState({ width: 400, height: 600 });
+  const lastHelpTriggerRef = useRef<number | null>(null);
 
-  // Initialize and load conversations
-  useEffect(() => {
-    const loaded = loadConversations();
-    setConversations(loaded);
+  const showToast = useCallback(
+    (type: 'error' | 'success' | 'warning', title: string, message: string) => {
+      const id = `toast_${Date.now()}_${Math.random()}`;
+      setToasts((prev) => [...prev, { id, type, title, message }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 6000);
+    },
+    []
+  );
 
-    const lastActiveId = loadLastActiveConversationId();
-    if (lastActiveId) {
-      const active = loaded.find((c) => c.id === lastActiveId);
-      if (active) {
-        setActiveConversation(active);
-      }
+  const handleApiError = useCallback(
+    (err: unknown, fallbackTitle: string, fallbackMessage: string) => {
+      const userMessage = getUserMessageFromError(err);
+      const title = fallbackTitle || 'Ups, algo salio mal';
+      const msg = userMessage || fallbackMessage || 'No pudimos completar la solicitud. Intenta nuevamente o contacta a soporte.';
+      showToast('error', title, msg);
+    },
+    [showToast]
+  );
+
+  const handleSendMessage = useCallback(async (
+    text: string,
+    analyzeScreen: boolean,
+    options?: { openChat?: boolean }
+  ) => {
+    if (options?.openChat) {
+      setIsOpen(true);
     }
-  }, []);
-
-  // Listen for global window errors and unhandled promise rejections
-  useEffect(() => {
-    const handleGlobalError = (event: ErrorEvent) => {
-      onDashboardError({
-        code: 500,
-        message: `Excepción no controlada: ${event.message} en ${event.filename}:${event.lineno}`,
-        timestamp: Date.now(),
-      });
-    };
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      onDashboardError({
-        code: 500,
-        message: `Rechazo de promesa no controlado: ${event.reason}`,
-        timestamp: Date.now(),
-      });
-    };
-
-    window.addEventListener('error', handleGlobalError);
-    window.addEventListener('unhandledrejection', handleUnhandledRejection);
-
-    return () => {
-      window.removeEventListener('error', handleGlobalError);
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
-    };
-  }, [onDashboardError]);
-
-  // Listen to outer help triggers (e.g. login links)
-  useEffect(() => {
-    if (helpTrigger) {
-      handleSendMessage(helpTrigger.query, false);
-      if (!isOpen) {
-        setIsOpen(true);
-      }
-    }
-  }, [helpTrigger]);
-
-  const handleSendMessage = async (text: string, analyzeScreen: boolean) => {
     let currentConv = activeConversation;
     
     // Create new conversation if none exists
     if (!currentConv) {
       setIsLoading(true);
       try {
-        const anonId = getOrCreateAnonId();
+        const accessToken = getAccessToken();
         const sessionRes = await createSession({
-          anon_id: anonId,
+          ...(accessToken ? {} : { anon_id: createAnonId() }),
           layer: 'external',
-          process_type: 'provider_support'
+          process_type: sessionProcessType
         });
         currentConv = createNewConversation(sessionRes.session_id, text.length > 30 ? text.substring(0, 30) + '...' : text);
         const updated = loadConversations();
@@ -105,6 +99,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       } catch (err) {
         setIsLoading(false);
         console.error('Failed to create session', err);
+        handleApiError(err, 'Error al Iniciar Chat', 'No se pudo crear la sesión para enviar tu consulta.');
         return;
       }
     }
@@ -153,7 +148,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       await sendChatMessageToDifyStream(
         streamRequest,
         screenContextParam,
-        (chunk, _convId) => {
+        (chunk) => {
           accumulatedAnswer += chunk;
 
           // Update message in real-time UI state
@@ -185,16 +180,31 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     } catch (error) {
       console.error('Error calling Dify API:', error);
       setIsLoading(false);
+      handleApiError(error, 'Error de Comunicación', 'Error al transmitir la respuesta de la IA.');
+      
+      const userMessage = getUserMessageFromError(error);
+      const errorMessage = userMessage
+        ? `<div class="error-message-placeholder">⚠️ ${userMessage}</div>`
+        : '<div class="error-message-placeholder">⚠️ Ups, algo salio mal. Intenta nuevamente o contacta a soporte.</div>';
+
       addMessageToConversation(
         currentConv.id,
         'assistant',
-        '⚠️ Lo siento, ha ocurrido un error al conectar con el servidor de inteligencia artificial. Por favor intenta de nuevo.'
+        errorMessage
       );
     } finally {
       setIsLoading(false);
       setConversations(loadConversations());
     }
-  };
+  }, [activeConversation, dashboardState, handleApiError, sessionProcessType]);
+
+  // Listen to outer help triggers (e.g. login links)
+  useEffect(() => {
+    if (!helpTrigger) return;
+    if (helpTrigger.timestamp === lastHelpTriggerRef.current) return;
+    lastHelpTriggerRef.current = helpTrigger.timestamp;
+    void handleSendMessage(helpTrigger.query, false, { openChat: true });
+  }, [helpTrigger, handleSendMessage]);
 
   const handleSelectConversation = (id: string) => {
     const loaded = loadConversations();
@@ -227,17 +237,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleCreateConversation = async () => {
     setIsLoading(true);
     try {
-      const anonId = getOrCreateAnonId();
+      const accessToken = getAccessToken();
       const sessionRes = await createSession({
-        anon_id: anonId,
+        ...(accessToken ? {} : { anon_id: createAnonId() }),
         layer: 'external',
-        process_type: 'provider_support'
+        process_type: sessionProcessType
       });
       const newConv = createNewConversation(sessionRes.session_id);
       setConversations(loadConversations());
       setActiveConversation(newConv);
     } catch (err) {
       console.error('Error creating new session manually', err);
+      handleApiError(err, 'Error al Crear Chat', 'No se pudo crear una nueva sesión de chat.');
     } finally {
       setIsLoading(false);
     }
@@ -275,26 +286,31 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         issue_summary: 'Soporte solicitado desde el Asistente Hipermaxi',
         process_type: dashboardState.activeTab === 'compras' ? 'SOP-05/06' : 'SOP-04'
       });
-      const updatedConv = addMessageToConversation(
-        activeConversation.id,
-        'assistant',
-        `✅ **Ticket Creado Exitosamente**\nSe ha generado el ticket de soporte número **${ticketRes.ticket_id}** en GLPI.\n\nUn agente de Soporte TI revisará tu caso y se comunicará contigo a la brevedad.`
-      );
-      if (updatedConv) setActiveConversation(updatedConv);
-    } catch (err) {
-      console.error('Error creating ticket', err);
+      
       addMessageToConversation(
         activeConversation.id,
         'assistant',
-        '⚠️ Hubo un error al intentar generar el ticket. Por favor contacta al soporte por WhatsApp.'
+        `✅ He generado un ticket para derivar tu caso a soporte de segundo nivel.\n\n**ID de Ticket:** \`${ticketRes.ticket_id}\`\n\nEl equipo se contactará contigo por correo electrónico en las próximas 24 horas hábiles.`
+      );
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      handleApiError(error, 'Error al Crear Ticket', 'No se pudo generar el ticket de soporte.');
+      
+      const userMessage = getUserMessageFromError(error);
+      const errorMessage = userMessage
+        ? `<div class="error-message-placeholder">⚠️ ${userMessage}</div>`
+        : '<div class="error-message-placeholder">⚠️ Ups, algo salio mal al generar el ticket. Intenta nuevamente o contacta a soporte.</div>';
+
+      addMessageToConversation(
+        activeConversation.id,
+        'assistant',
+        errorMessage
       );
     } finally {
       setIsLoading(false);
       setConversations(loadConversations());
     }
   };
-
-  const hasErrors = !!dashboardState.activeError;
 
   return (
     <div className="hiper-chatbot-widget">
@@ -317,7 +333,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       ) : (
         <ChatBubble 
           onOpen={handleToggleOpen} 
-          hasErrorsOnScreen={hasErrors}
           position={bubblePosition}
           onPositionChange={(pos, align) => {
             setBubblePosition(pos);
@@ -325,6 +340,28 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }}
         />
       )}
+
+      {/* Toast Notifications */}
+      <div className="hiper-toast-container">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`hiper-toast ${toast.type}`}>
+            <div className="toast-header">
+              <div className="toast-header-left">
+                <span>{toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : '✅'}</span>
+                <span className="toast-title" style={{ marginLeft: '6px' }}>{toast.title}</span>
+              </div>
+              <button 
+                type="button" 
+                className="toast-close" 
+                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="toast-body">{toast.message}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

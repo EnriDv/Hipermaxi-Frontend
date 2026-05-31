@@ -6,17 +6,20 @@ const STORAGE_KEYS = {
   ANON_ID: 'hiper_chatbot_anon_id',
 };
 
-export const getOrCreateAnonId = (): string => {
+const generateAnonId = (): string => {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+};
+
+export const createAnonId = (): string => {
+  const anonId = generateAnonId();
   try {
-    let anonId = localStorage.getItem(STORAGE_KEYS.ANON_ID);
-    if (!anonId) {
-      anonId = crypto.randomUUID ? crypto.randomUUID() : `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem(STORAGE_KEYS.ANON_ID, anonId);
-    }
-    return anonId;
-  } catch {
-    return crypto.randomUUID ? crypto.randomUUID() : `anon_${Date.now()}`;
+    localStorage.setItem(STORAGE_KEYS.ANON_ID, anonId);
+  } catch (error) {
+    console.warn('No se pudo guardar anon_id en localStorage.', error);
   }
+  return anonId;
 };
 
 export const loadConversations = (): Conversation[] => {
@@ -40,7 +43,8 @@ export const saveConversations = (conversations: Conversation[]): void => {
 export const loadLastActiveConversationId = (): string | null => {
   try {
     return localStorage.getItem(STORAGE_KEYS.LAST_ACTIVE_ID);
-  } catch {
+  } catch (error) {
+    console.warn('No se pudo leer el ultimo chat activo desde localStorage.', error);
     return null;
   }
 };

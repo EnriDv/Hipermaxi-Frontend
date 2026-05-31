@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import bubbleMessages from '../data/bubbleMessages.json';
 
 interface ChatBubbleProps {
   onOpen: () => void;
-  hasErrorsOnScreen: boolean;
   position: { x: number; y: number };
   onPositionChange: (pos: { x: number; y: number }, align: 'left' | 'right') => void;
 }
 
-export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScreen, position, onPositionChange }) => {
+export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, position, onPositionChange }) => {
   // Dragging states
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -20,12 +20,46 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
     posRef.current = position;
   }, [position]);
 
-  const [isHovered, setIsHovered] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  // Periodic reminder tooltip
+  useEffect(() => {
+    // Show a tooltip shortly after mount (5 seconds)
+    const initialTimer = setTimeout(() => {
+      if (!isDragging) {
+        setShowTooltip(true);
+      }
+    }, 5000);
+
+    // Set up interval to show it every 45 seconds
+    const interval = setInterval(() => {
+      if (!isDragging) {
+        setShowTooltip(true);
+        setMessageIndex((prev) => (prev + 1) % bubbleMessages.length);
+      }
+    }, 45000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
+  }, [isDragging]);
+
+  // Dismiss tooltip after 6 seconds
+  useEffect(() => {
+    if (showTooltip) {
+      const hideTimer = setTimeout(() => {
+        setShowTooltip(false);
+      }, 6000);
+      return () => clearTimeout(hideTimer);
+    }
+  }, [showTooltip]);
 
   // Attention-seeking states:
   // - 'normal': White background, orange icon
   // - 'attention': Orange background, pulsing ring, message tooltip
-  const bubbleState = (isHovered || isDragging || hasErrorsOnScreen) ? 'attention' : 'normal';
+  const bubbleState = (showTooltip || isDragging) ? 'attention' : 'normal';
 
   useEffect(() => {
     // Re-adjust bubble position if window resizes
@@ -52,6 +86,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
     // Only drag with left click
     if (e.button !== 0) return;
     setIsDragging(true);
+    setShowTooltip(false); // Hide tooltip when starting to drag
     hasDraggedRef.current = false;
     mouseDownPos.current = { x: e.clientX, y: e.clientY };
     dragStart.current = {
@@ -119,6 +154,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
   // Touch Handlers for mobile/touch screens
   const handleTouchStart = (e: React.TouchEvent) => {
     setIsDragging(true);
+    setShowTooltip(false); // Hide tooltip when starting to drag
     hasDraggedRef.current = false;
     const touch = e.touches[0];
     mouseDownPos.current = { x: touch.clientX, y: touch.clientY };
@@ -183,14 +219,12 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
   return (
     <div
       ref={bubbleRef}
-      className={`chat-bubble-wrapper ${bubbleState} ${hasErrorsOnScreen ? 'has-error' : ''}`}
+      className={`chat-bubble-wrapper ${bubbleState}`}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         transition: isDragging ? 'none' : 'left 0.3s cubic-bezier(0.16, 1, 0.3, 1), top 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -207,10 +241,6 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
 
       {/* Actual bubble inner */}
       <div className="bubble-circle">
-        {hasErrorsOnScreen ? (
-          <div className="bubble-error-badge">!</div>
-        ) : null}
-        
         {/* Robot / Chat SVG Icon */}
         <svg className="bubble-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2C6.47715 2 2 6.47715 2 12C2 14.3361 2.79813 16.4858 4.1287 18.2109L2.29289 20.2929C1.90237 20.6834 1.90237 21.3166 2.29289 21.7071C2.68342 22.0976 3.31658 22.0976 3.70711 21.7071L6.09631 19.3179C7.75338 20.3958 9.79979 21 12 21C17.5228 21 22 16.5228 22 12C22 6.47715 17.5228 2 12 2Z" fill="currentColor"/>
@@ -218,14 +248,10 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ onOpen, hasErrorsOnScree
         </svg>
       </div>
 
-      {/* Floating tooltip message */}
-      {bubbleState === 'attention' && (
+      {/* Floating tooltip message from JSON list */}
+      {showTooltip && !isDragging && (
         <div className={`bubble-tooltip animate-fade-in ${position.x < window.innerWidth / 2 ? 'left-aligned' : ''}`}>
-          {hasErrorsOnScreen ? (
-            <span>🚨 ¡Veo un error en pantalla! Pregúntame cómo solucionarlo.</span>
-          ) : (
-            <span>🤖 ¿Necesitas ayuda con el producto o despacho? ¡Pregúntame!</span>
-          )}
+          <span>{bubbleMessages[messageIndex]}</span>
           <div className="tooltip-arrow"></div>
         </div>
       )}

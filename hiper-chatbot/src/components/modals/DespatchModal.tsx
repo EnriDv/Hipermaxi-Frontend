@@ -25,14 +25,7 @@ export const DespatchModal = () => {
   };
 
   const triggerError = (code: number, message: string) => {
-    onChange({
-      ...state,
-      activeError: {
-        code,
-        message,
-        timestamp: Date.now(),
-      },
-    });
+    alert(`Error [${code}]: ${message}`);
   };
 
   const handleQtyDespatchChange = (index: number, val: string) => {

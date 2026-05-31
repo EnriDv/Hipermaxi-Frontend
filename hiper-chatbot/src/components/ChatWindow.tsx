@@ -318,11 +318,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 {isLoading && (!activeConversation.messages.length || activeConversation.messages[activeConversation.messages.length - 1].role !== 'assistant' || !activeConversation.messages[activeConversation.messages.length - 1].content) && (
                   <div className="message-bubble-row assistant">
                     <div className="message-avatar">🤖</div>
-                    <div className="message-bubble-wrapper">
-                      <div className="message-bubble typing">
-                        <span className="dot"></span>
-                        <span className="dot"></span>
-                        <span className="dot"></span>
+                    <div className="message-bubble-wrapper" style={{ width: '100%' }}>
+                      <div className="message-bubble skeleton-bubble">
+                        <div className="skeleton-line" style={{ width: '90%' }}></div>
+                        <div className="skeleton-line" style={{ width: '70%' }}></div>
+                        <div className="skeleton-line" style={{ width: '40%' }}></div>
                       </div>
                     </div>
                   </div>
@@ -366,11 +366,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             >
               🔍 Analizar Pantalla
             </button>
-            {dashboardState.activeError && (
-              <span className="error-indicator-badge animate-pulse">
-                🚨 Alerta en Pantalla
-              </span>
-            )}
           </div>
 
           <form className="chat-input-form" onSubmit={handleSend}>
